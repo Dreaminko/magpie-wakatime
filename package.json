@@ -2,11 +2,17 @@
   "name": "magpie-wakatime",
   "version": "0.1.1",
   "description": "Send local Magpie AI usage to WakaTime",
+  "keywords": ["opencode", "opencode-plugin", "magpie", "wakatime"],
+  "license": "MIT",
+  "author": "Dreaminko <Dream_ink@qq.com>",
+  "repository": { "type": "git", "url": "git+https://github.com/Dreaminko/magpie-wakatime.git" },
+  "homepage": "https://github.com/Dreaminko/magpie-wakatime#readme",
+  "bugs": { "url": "https://github.com/Dreaminko/magpie-wakatime/issues" },
   "type": "module",
   "main": "./index.mjs",
   "exports": "./index.mjs",
-  "bin": { "magpie-wakatime": "./src/sync.mjs" },
+  "bin": { "magpie-wakatime": "src/sync.mjs" },
   "files": ["index.mjs", "src", "README.md"],
   "engines": { "bun": ">=1.3.0" },
-  "scripts": { "test": "bun test" }
+  "scripts": { "test": "bun test", "prepublishOnly": "bun test" }
 }
