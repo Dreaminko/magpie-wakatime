@@ -53,7 +53,7 @@ export class Store {
 
   ingest(items, progressKey, progress) {
     transaction(this.db, () => {
-      let count = this.db.query("SELECT count(*) AS n FROM queue WHERE state != 'sent'").get().n;
+      let count = this.db.query("SELECT count(*) AS n FROM queue WHERE state='pending'").get().n;
       const find = this.db.query("SELECT payload, state FROM queue WHERE id=?");
       const insert = this.db.query("INSERT INTO queue(id, payload) VALUES (?, ?)");
       for (const { id, payload } of items) {

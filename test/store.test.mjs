@@ -40,6 +40,20 @@ test("rolls back a full page and scan progress when the queue is full", () => {
   } finally { store.close(); }
 });
 
+test("rejected rows retain deduplication without consuming pending capacity", () => {
+  const store = new Store(":memory:", { capacity: 2 });
+  try {
+    store.ingest([item("a"), item("b")], "cursor", 2);
+    store.ack("a", 400, 0);
+    store.ingest([item("a"), item("c")], "cursor", 3);
+    expect(store.status()).toMatchObject({ pending: 2, rejected: 1 });
+    expect(store.pending(0).map((row) => row.id)).toEqual(["b", "c"]);
+    expect(() => store.ingest([item("d")], "cursor", 4)).toThrow("queue-full");
+    expect(store.get("cursor")).toBe(3);
+    expect(store.status()).toMatchObject({ pending: 2, rejected: 1 });
+  } finally { store.close(); }
+});
+
 test("flags a revision that only moves cached input tokens", () => {
   const store = new Store(":memory:");
   const version = (cacheRead) => ({ id: "a", payload: {
