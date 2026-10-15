@@ -12,7 +12,7 @@ const row = {
 test("maps all input tokens once and preserves the source time", () => {
   const result = mapRow(row, options, "salt");
   expect(result).toMatchObject({
-    entity: "magpie", type: "app", category: "ai coding", project: "Magpie",
+    entity: "codex", type: "app", category: "ai coding", project: "Magpie",
     time: Date.parse(row.t) / 1000, ai_input_tokens: 130, ai_output_tokens: 30,
     is_write: false,
   });
@@ -45,6 +45,13 @@ test("uses agent project labels and stable salted session identities", () => {
   expect(mapped.ai_session).toBe(mapRow(row, options, "salt").ai_session);
   expect(mapped.ai_session).not.toBe(mapRow(row, options, "other").ai_session);
   expect(mapRow({ ...row, session: undefined }, options, "salt").ai_session).toBeUndefined();
+});
+
+test("names the entity after the agent and falls back when it is unusable", () => {
+  expect(mapRow({ ...row, agent: " claude " }, options, "salt").entity).toBe("claude");
+  for (const agent of [undefined, "", "   ", 7, "x".repeat(256)]) {
+    expect(mapRow({ ...row, agent }, options, "salt").entity).toBe("magpie");
+  }
 });
 
 test("deduplicates price/token revisions but preserves separate provider attempts", () => {

@@ -20,8 +20,9 @@ export function mapRow(row, options, salt) {
   const input = values[0] + values[2] + values[3];
   if (!Number.isSafeInteger(input)) throw new Error("invalid-row");
   if (input + values[1] === 0) return null;
+  const agent = typeof row.agent === "string" && row.agent.trim().length <= 255 ? row.agent.trim() : "";
   const payload = {
-    entity: "magpie", type: "app", category: "ai coding", time,
+    entity: agent || "magpie", type: "app", category: "ai coding", time,
     project: Object.hasOwn(options.projectByAgent, row.agent) ? options.projectByAgent[row.agent] : options.project,
     ai_input_tokens: input, ai_output_tokens: values[1], is_write: false,
   };

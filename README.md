@@ -38,7 +38,7 @@ key 由 Magpie 存到配置目录下的 `plugin-auth.json`，插件只读取这�
 
 每条有实际 token 消耗的请求记录生成一个 heartbeat：
 
-- `entity` 固定 `magpie`，`type` 是 `app`，`category` 是 `ai coding`，`is_write` 为 `false`。
+- `entity` 是发起这次请求的 agent 名（例如 `codex`，取不到时用 `magpie`），`type` 是 `app`，`category` 是 `ai coding`，`is_write` 为 `false`。WakaTime 的应用/实体维度因此会把各个 agent 分开。
 - `time` 用请求发生时间；`project` 按上面的配置。
 - `ai_input_tokens` = `in + cache_read + cache_write`，`ai_output_tokens` = `out`。`reasoning` 是 `out` 的内部拆分，不重复相加。
 - `ai_session` 是本机随机盐加 agent/session 的 HMAC 摘要，同一会话稳定、跨机器不可还原。
@@ -47,7 +47,7 @@ key 由 Magpie 存到配置目录下的 `plugin-auth.json`，插件只读取这�
 
 ## 不会发送什么
 
-账号名、邮箱、密钥、提示词、对话正文、工具结果、文件路径、模型名、供应商名、上游地址、费用和错误正文都不会离开本机。本地状态库只保存归一化统计、摘要和队列。
+账号名、邮箱、密钥、提示词、对话正文、工具结果、文件路径、模型名、供应商名、上游地址、费用和错误正文都不会离开本机；和 agent 有关的字段只有它的名字，用作 heartbeat 的实体标识。本地状态库只保存归一化统计、摘要和队列。
 
 ## 与现有 WakaTime 采集的重复
 
