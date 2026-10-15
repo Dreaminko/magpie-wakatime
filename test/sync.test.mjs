@@ -7,7 +7,7 @@ import { readOptions } from "../src/config.mjs";
 import { tempDirectory } from "./helpers.mjs";
 
 const payload = { entity: "magpie", type: "app", category: "ai coding", time: 1792026000.123,
-  project: "Magpie", ai_input_tokens: 130, ai_output_tokens: 30, is_write: false };
+  project: "Magpie", ai_input_tokens: 110, ai_cached_input_tokens: 20, ai_output_tokens: 30, is_write: false };
 function enqueue(store, n) { store.ingest(Array.from({ length: n }, (_, i) => ({ id: `row-${i}`, payload }))); }
 
 test("sends at most 25 and confirms each bulk result independently", async () => {

@@ -40,7 +40,7 @@ key 由 Magpie 存到配置目录下的 `plugin-auth.json`，插件只读取这�
 
 - `entity` 是发起这次请求的 agent 名（例如 `codex`，取不到时用 `magpie`），`type` 是 `app`，`category` 是 `ai coding`，`is_write` 为 `false`。WakaTime 的应用/实体维度因此会把各个 agent 分开。
 - `time` 用请求发生时间；`project` 按上面的配置。
-- `ai_input_tokens` = `in + cache_read + cache_write`，`ai_output_tokens` = `out`。`reasoning` 是 `out` 的内部拆分，不重复相加。
+- `ai_input_tokens` = `in + cache_write`（未命中缓存的输入加缓存写入），`ai_cached_input_tokens` = `cache_read`（为 0 时省略），`ai_output_tokens` = `out`。WakaTime 按未命中缓存的输入、缓存输入、输出三项分别计价，所以缓存读取单独上报。`reasoning` 是 `out` 的内部拆分，不重复相加。
 - `ai_session` 是本机随机盐加 agent/session 的 HMAC 摘要，同一会话稳定、跨机器不可还原。
 
 这些是后台 AI 请求的活动时间点，只能说明当时有请求，不能证明你在键盘前；时长由 WakaTime 按自己的规则计算。

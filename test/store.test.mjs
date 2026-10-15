@@ -40,6 +40,20 @@ test("rolls back a full page and scan progress when the queue is full", () => {
   } finally { store.close(); }
 });
 
+test("flags a revision that only moves cached input tokens", () => {
+  const store = new Store(":memory:");
+  const version = (cacheRead) => ({ id: "a", payload: {
+    time: 123, ai_input_tokens: 100, ai_output_tokens: 2, ai_cached_input_tokens: cacheRead } });
+  try {
+    store.ingest([version(10)]);
+    store.ingest([version(25)]);
+    expect(JSON.parse(store.pending(0)[0].payload).ai_cached_input_tokens).toBe(25);
+    store.ack("a", 201, 0);
+    store.ingest([version(40)]);
+    expect(store.status()).toMatchObject({ sent: 1, changed: 1 });
+  } finally { store.close(); }
+});
+
 test("coordinates independent SQLite connections and expires abandoned leases", () => {
   const directory = tempDirectory(), file = join(directory, "state.sqlite");
   const a = new Store(file), b = new Store(file);

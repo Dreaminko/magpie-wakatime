@@ -83,7 +83,8 @@ Magpie 会为不同 CLI 调用和应用创建不同宿主，更新时旧宿主�
 | `category` | `ai coding` |
 | `time` | Magpie `t` 转为 Unix 秒，保留小数；使用原始活动时间，不用同步时间 |
 | `project` | 用户配置的项目名；可按 agent 指定映射，未配置时为 `Magpie`。该名称是归档标签，不代表自动识别到了真实仓库 |
-| `ai_input_tokens` | `in + cache_read + cache_write`。Magpie 源码明确说明两个缓存字段不包含在 `in` 内，此处同步全部输入 token，缓存明细不另外重复相加 |
+| `ai_input_tokens` | `in + cache_write`。Magpie 源码明确说明两个缓存字段不包含在 `in` 内；`cache_write` 是 Anthropic 的 cache creation，官方 CLI 把它计入 input tokens |
+| `ai_cached_input_tokens` | `cache_read`；为 0 时省略该字段。WakaTime 把缓存读取单独按缓存价计算，`ai_input_tokens` 只记未命中缓存的输入，两者相加才是总输入 |
 | `ai_output_tokens` | `out`；不再叠加 `reasoning`，避免重复计算输出子项 |
 | `ai_session` | 有 session 时，使用本地持久化随机盐和 agent/session 生成稳定摘要；没有则省略，不伪造真实会话 |
 | `is_write` | `false`，网关请求不能证明写过文件 |
@@ -91,7 +92,7 @@ Magpie 会为不同 CLI 调用和应用创建不同宿主，更新时旧宿主�
 
 首版不发送 `language`、`branch`、`ai_line_changes`、`ai_prompt_length`、`ai_subscription_plan`，因为当前数据入口不足以可靠得到它们。
 
-WakaTime CLI 源码出现了 `ai_cached_input_tokens`，但公开 POST 文档未列出该字段；首版使用上表的公开字段合同，不承诺独立缓存报表。模型、供应商和费用可用于本地诊断，但不塞进语言、分支等无关字段。原生模型/费用显示应在后续得到明确写入合同后再扩展。
+`ai_cached_input_tokens` 未出现在公开 POST 文档中，但 wakatime-cli 会发送它，官方 FAQ 的费用公式也按未命中缓存的输入、缓存输入、输出三项分别计价，因此首版按同一口径拆分输入 token 并发送该字段。模型、供应商和费用可用于本地诊断，但不塞进语言、分支等无关字段。原生模型/费用显示应在后续得到明确写入合同后再扩展。
 
 ## 7. 配置与故障处理
 
@@ -143,7 +144,7 @@ WakaTime CLI 已有从 Claude、Codex、Cursor 等会话日志自动采集 AI �
 
 | 风险 | 验收标准 |
 | --- | --- |
-| 基础映射 | `in=100, cache_read=20, cache_write=10, out=30` 生成输入 130、输出 30；reasoning 不重复加入 |
+| 基础映射 | `in=100, cache_read=20, cache_write=10, out=30` 生成输入 110、缓存输入 20、输出 30；三项相加等于行总量，reasoning 不重复加入 |
 | 统计完整性 | 流式/非流式、成功/有消耗的失败/取消、供应商重试均按 Magpie 已记录用量入队一次 |
 | 伪造指标 | 不产生不存在的文件、代码行数、语言、项目路径、费用和空闲心跳 |
 | 分页 | 超过 500 条、并发插入、相同时间戳、同 route 多尝试、跨午夜均不因分页而静默漏数或重复入队 |

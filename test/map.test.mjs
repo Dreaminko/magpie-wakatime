@@ -9,19 +9,27 @@ const row = {
   session: "private-session", providerAccount: "private@example.com",
 };
 
-test("maps all input tokens once and preserves the source time", () => {
+test("splits cached input from uncached input and preserves the source time", () => {
   const result = mapRow(row, options, "salt");
   expect(result).toMatchObject({
     entity: "codex", type: "app", category: "ai coding", project: "Magpie",
-    time: Date.parse(row.t) / 1000, ai_input_tokens: 130, ai_output_tokens: 30,
-    is_write: false,
+    time: Date.parse(row.t) / 1000, ai_input_tokens: 110, ai_cached_input_tokens: 20,
+    ai_output_tokens: 30, is_write: false,
   });
+  // The three WakaTime components stay additive: 110 + 20 + 30 equals the row total.
   expect(result.ai_session).toMatch(/^[a-f0-9]{64}$/);
   expect(JSON.stringify(result)).not.toContain("private");
   expect(Object.keys(result).sort()).toEqual([
-    "ai_input_tokens", "ai_output_tokens", "ai_session", "category", "entity",
-    "is_write", "project", "time", "type",
+    "ai_cached_input_tokens", "ai_input_tokens", "ai_output_tokens", "ai_session",
+    "category", "entity", "is_write", "project", "time", "type",
   ]);
+});
+
+test("omits cached input tokens when the row read none", () => {
+  const plain = mapRow({ ...row, cache_read: 0, cache_write: 0 }, options, "salt");
+  expect(plain.ai_input_tokens).toBe(100);
+  expect("ai_cached_input_tokens" in plain).toBe(false);
+  expect(mapRow(row, options, "salt").ai_input_tokens).toBe(110);
 });
 
 test("filters imported, remote, excluded, rejected and zero-token records", () => {
