@@ -54,6 +54,21 @@ test("flags a revision that only moves cached input tokens", () => {
   } finally { store.close(); }
 });
 
+test("refreshes pending model metadata without resending confirmed usage", () => {
+  const store = new Store(":memory:");
+  const original = item("a");
+  const updated = { ...original, payload: { ...original.payload, user_agent: "gpt/5.4-high Magpie/unknown" } };
+  try {
+    store.ingest([original]);
+    store.ingest([updated]);
+    expect(JSON.parse(store.pending(0)[0].payload).user_agent).toBe("gpt/5.4-high Magpie/unknown");
+    store.ack("a", 201, 0);
+    store.ingest([{ ...updated, payload: { ...updated.payload, user_agent: "gpt/5.4-xhigh Magpie/unknown" } }]);
+    expect(store.pending(0)).toHaveLength(0);
+    expect(store.status()).toMatchObject({ sent: 1, changed: 1 });
+  } finally { store.close(); }
+});
+
 test("coordinates independent SQLite connections and expires abandoned leases", () => {
   const directory = tempDirectory(), file = join(directory, "state.sqlite");
   const a = new Store(file), b = new Store(file);

@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { userAgent } from "./user-agent.mjs";
 
 function digest(value, salt) {
   return createHmac("sha256", salt).update(JSON.stringify(value)).digest("hex");
@@ -29,6 +30,7 @@ export function mapRow(row, options, salt) {
     entity: agent || "magpie", type: "app", category: "ai coding", time,
     project: Object.hasOwn(options.projectByAgent, row.agent) ? options.projectByAgent[row.agent] : options.project,
     ai_input_tokens: values[0] + values[3], ai_output_tokens: values[1], is_write: false,
+    user_agent: userAgent(row.served || row.model, row.effort),
   };
   if (cacheRead > 0) payload.ai_cached_input_tokens = cacheRead;
   const session = row.native_session || row.session;

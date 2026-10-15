@@ -1,12 +1,11 @@
 #!/usr/bin/env bun
 import { existsSync, mkdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { platform, release } from "node:os";
 import { join, resolve } from "node:path";
 import { Store } from "./store.mjs";
 import { collectDay, localDay } from "./source.mjs";
 import { readApiKey, defaultDirectory } from "./config.mjs";
-import pkg from "../package.json" with { type: "json" };
+import { defaultUserAgent } from "./user-agent.mjs";
 
 function retryDelay(attempt, header, now) {
   const seconds = header && Number(header);
@@ -25,7 +24,7 @@ export async function sendBatch(store, key, { now = Date.now(), fetcher = fetch,
       method: "POST", redirect: "manual",
       headers: {
         "Content-Type": "application/json", Authorization: `Basic ${Buffer.from(key).toString("base64")}`,
-        "User-Agent": `Magpie/unknown (${platform()} ${release()}) magpie-wakatime/${pkg.version}`,
+        "User-Agent": defaultUserAgent,
       },
       body: `[${batch.map((r) => r.payload).join(",")}]`,
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10_000)]) : AbortSignal.timeout(10_000),

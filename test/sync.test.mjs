@@ -4,11 +4,38 @@ import { join } from "node:path";
 import { Store } from "../src/store.mjs";
 import { sendBatch, Sync } from "../src/sync.mjs";
 import { readOptions } from "../src/config.mjs";
+import { mapRow } from "../src/map.mjs";
 import { tempDirectory } from "./helpers.mjs";
 
 const payload = { entity: "magpie", type: "app", category: "ai coding", time: 1792026000.123,
   project: "Magpie", ai_input_tokens: 110, ai_cached_input_tokens: 20, ai_output_tokens: 30, is_write: false };
 function enqueue(store, n) { store.ingest(Array.from({ length: n }, (_, i) => ({ id: `row-${i}`, payload }))); }
+
+test("preserves each model in a mixed bulk request and its retry", async () => {
+  const store = new Store(":memory:");
+  const options = readOptions();
+  const row = { t: "2026-10-15T01:02:03Z", agent: "codex", in: 10, out: 2 };
+  const items = [
+    { id: "gpt", payload: mapRow({ ...row, model: "gpt-5.4", effort: "high" }, options, "salt") },
+    { id: "claude", payload: mapRow({ ...row, model: "claude-sonnet-4-6", effort: "low" }, options, "salt") },
+  ];
+  const requests = [];
+  const fetcher = async (_url, init) => {
+    requests.push(JSON.parse(init.body));
+    if (requests.length === 1) return new Response(null, { status: 429, headers: { "Retry-After": "60" } });
+    return Response.json({ responses: [[{}, 201], [{}, 201]] }, { status: 201 });
+  };
+  try {
+    store.ingest(items);
+    await sendBatch(store, "test-key", { now: 1000, fetcher });
+    await sendBatch(store, "test-key", { now: 61_000, fetcher });
+    expect(requests).toHaveLength(2);
+    expect(requests[0][0].user_agent).toStartWith("gpt/5.4-high Magpie/");
+    expect(requests[0][1].user_agent).toStartWith("sonnet/4-6-low Magpie/");
+    expect(requests[1]).toEqual(requests[0]);
+    expect(store.status()).toMatchObject({ sent: 2, pending: 0 });
+  } finally { store.close(); }
+});
 
 test("sends at most 25 and confirms each bulk result independently", async () => {
   const store = new Store(":memory:");

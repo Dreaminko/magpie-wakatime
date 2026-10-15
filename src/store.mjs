@@ -66,7 +66,8 @@ export class Store {
           const previous = JSON.parse(old.payload);
           const different = previous.ai_input_tokens !== payload.ai_input_tokens ||
             previous.ai_cached_input_tokens !== payload.ai_cached_input_tokens ||
-            previous.ai_output_tokens !== payload.ai_output_tokens;
+            previous.ai_output_tokens !== payload.ai_output_tokens ||
+            previous.user_agent !== payload.user_agent;
           if (different && old.state === "pending") {
             this.db.query("UPDATE queue SET payload=? WHERE id=?").run(JSON.stringify(payload), id);
           } else if (different) {

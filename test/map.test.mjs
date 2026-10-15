@@ -21,8 +21,36 @@ test("splits cached input from uncached input and preserves the source time", ()
   expect(JSON.stringify(result)).not.toContain("private");
   expect(Object.keys(result).sort()).toEqual([
     "ai_cached_input_tokens", "ai_input_tokens", "ai_output_tokens", "ai_session",
-    "category", "entity", "is_write", "project", "time", "type",
+    "category", "entity", "is_write", "project", "time", "type", "user_agent",
   ]);
+});
+
+test("encodes the served model and effort using WakaTime CLI user-agent tokens", () => {
+  const result = mapRow({ ...row, model: "gateway-alias", served: "openai/gpt-5.4", effort: "high" }, options, "salt");
+  expect(result.user_agent).toMatch(/^gpt\/5\.4-high Magpie\/unknown \(.+\) magpie-wakatime\/\S+$/);
+  expect(result.user_agent).not.toContain("gateway-alias");
+  expect(result.user_agent).not.toContain("openai/");
+});
+
+test("falls back to the recorded model and supports model naming conventions", () => {
+  for (const [model, effort, token] of [
+    ["gpt-5.4", "high", "gpt/5.4-high"],
+    ["gpt-5.4-high", "HIGH", "gpt/5.4-high"],
+    ["claude-sonnet-4-6", "", "sonnet/4-6"],
+    ["claude-3-7-sonnet", undefined, "claude/3-7-sonnet"],
+    ["gemini-2.5-pro", "low", "gemini/2.5-pro-low"],
+    ["DeepSeek-V4.1-Flash", undefined, "DeepSeek/4.1-Flash"],
+    ["qwen3.5-397b", undefined, "qwen/3.5-397b"],
+    ["gpt/5.4", "xhigh", "gpt/5.4-xhigh"],
+  ]) {
+    expect(mapRow({ ...row, model, effort }, options, "salt").user_agent).toStartWith(`${token} Magpie/`);
+  }
+});
+
+test("does not invent a model version from missing or unversioned names", () => {
+  for (const model of [undefined, null, 7, "", "gateway-alias"]) {
+    expect(mapRow({ ...row, model, effort: "high" }, options, "salt").user_agent).toStartWith("Magpie/unknown ");
+  }
 });
 
 test("omits cached input tokens when the row read none", () => {

@@ -42,12 +42,13 @@ key 由 Magpie 存到配置目录下的 `plugin-auth.json`，插件只读取这�
 - `time` 用请求发生时间；`project` 按上面的配置。
 - `ai_input_tokens` = `in + cache_write`（未命中缓存的输入加缓存写入），`ai_cached_input_tokens` = `cache_read`（为 0 时省略），`ai_output_tokens` = `out`。WakaTime 按未命中缓存的输入、缓存输入、输出三项分别计价，所以缓存读取单独上报。`reasoning` 是 `out` 的内部拆分，不重复相加。
 - `ai_session` 是本机随机盐加 agent/session 的 HMAC 摘要，同一会话稳定、跨机器不可还原。
+- `user_agent` 携带模型名称、版本和 `effort` 推理强度，优先使用实际响应模型 `served`，缺失时使用 `model`。格式沿用 [WakaTime CLI](https://github.com/wakatime/wakatime-cli/blob/develop/pkg/ai/ai.go)，例如 `gpt/5.4-high`；无法解析版本时只发送通用标识。同一批次的模型信息逐条保留，WakaTime 是否识别及如何展示取决于其服务端支持。
 
 这些是后台 AI 请求的活动时间点，只能说明当时有请求，不能证明你在键盘前；时长由 WakaTime 按自己的规则计算。
 
 ## 不会发送什么
 
-账号名、邮箱、密钥、提示词、对话正文、工具结果、文件路径、模型名、供应商名、上游地址、费用和错误正文都不会离开本机；和 agent 有关的字段只有它的名字，用作 heartbeat 的实体标识。本地状态库只保存归一化统计、摘要和队列。
+账号名、邮箱、密钥、提示词、对话正文、工具结果、文件路径、供应商配置名、上游地址、费用和错误正文都不会离开本机；和 agent 有关的字段只有它的名字，用作 heartbeat 的实体标识。本地状态库只保存归一化统计、摘要和队列。
 
 ## 与现有 WakaTime 采集的重复
 
@@ -77,7 +78,7 @@ bun src/sync.mjs preview [--directory <Magpie 配置目录>] [--limit 5]
 - 首次启用时间之后才开始采集，不自动回灌安装前的历史；停机后逐日补读，并每 10 分钟复查前两天，更早的补录不保证。
 - 队列上限 100,000 条，达到上限停止推进扫描进度并显示积压。
 - 上传走 WakaTime 的 `heartbeats.bulk`，每批 25 条；网络错误、429、5xx 按 5 秒到 5 分钟退避，`401/403` 停止发送等你修密钥。
-- 被 WakaTime 永久拒绝（4xx）的条目进入隔离状态，不阻塞后续记录；上游 token 事后修正只记为差异，不重发整条统计。
+- 被 WakaTime 永久拒绝（4xx）的条目进入隔离状态，不阻塞后续记录；待发送记录在再次扫描时更新 token 和模型信息，已发送记录的事后修正只记为差异，不重发整条统计。
 - 仅适用于本机个人网关。多人共用同一个网关时不能直接当多人统计使用。
 
 ## 卸载
