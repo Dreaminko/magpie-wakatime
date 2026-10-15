@@ -12,11 +12,13 @@ export function readOptions(options = {}) {
       url.username || url.password || url.pathname !== "/" || url.search || url.hash) invalid();
   const result = {
     gatewayUrl: url.origin, apiKeyEnv: options.apiKeyEnv ?? "WAKATIME_API_KEY",
+    authAccount: options.authAccount ?? null,
     project: options.project ?? "Magpie", projectByAgent: options.projectByAgent ?? {},
     excludeAgents: options.excludeAgents ?? [],
   };
   const label = (v) => typeof v === "string" && v.trim().length > 0 && v.length <= 255;
   if (!label(result.project) || !/^[a-z_][a-z0-9_]*$/i.test(result.apiKeyEnv) ||
+      (result.authAccount !== null && (!label(result.authAccount) || !/^wakatime(?:#[^\s#]+)?$/.test(result.authAccount))) ||
       !result.projectByAgent || typeof result.projectByAgent !== "object" || Array.isArray(result.projectByAgent) ||
       !Object.entries(result.projectByAgent).every(([k, v]) => label(k) && label(v)) ||
       !Array.isArray(result.excludeAgents) || !result.excludeAgents.every(label)) invalid();
@@ -24,23 +26,26 @@ export function readOptions(options = {}) {
 }
 
 // The app stores keys entered in its sign-in prompt in plugin-auth.json.
-function signInKey(directory) {
-  let text;
-  try { text = readFileSync(join(directory, "plugin-auth.json"), "utf8"); }
-  catch (error) { if (error.code === "ENOENT") return null; throw new Error("key-config-unreadable"); }
-  let list;
-  try { list = JSON.parse(text); } catch { return null; }
-  if (!list || typeof list !== "object") return null;
-  const ids = ["wakatime", ...Object.keys(list).filter((id) => id.startsWith("wakatime#"))];
-  for (const id of ids) {
-    const entry = list[id];
-    if (entry?.type === "api" && typeof entry.key === "string" && entry.key.trim()) return entry.key.trim();
+function signInKey(directory, account) {
+  let list = {};
+  try { list = JSON.parse(readFileSync(join(directory, "plugin-auth.json"), "utf8")); }
+  catch (error) {
+    if (error.code !== "ENOENT" && !(error instanceof SyntaxError)) throw new Error("key-config-unreadable");
   }
-  return null;
+  if (!list || typeof list !== "object" || Array.isArray(list)) list = {};
+  const ids = Object.keys(list).filter((id) => {
+    const entry = list[id];
+    return (id === "wakatime" || id.startsWith("wakatime#")) &&
+      entry?.type === "api" && typeof entry.key === "string" && entry.key.trim();
+  });
+  if (account && !ids.includes(account)) throw new Error("key-account-missing");
+  if (!account && ids.length > 1) throw new Error("key-account-ambiguous");
+  const selected = account ?? ids[0];
+  return selected ? list[selected].key.trim() : null;
 }
 
-export function readApiKey(directory, variable, env = process.env) {
-  const signedIn = signInKey(directory);
+export function readApiKey(directory, variable, env = process.env, account = null) {
+  const signedIn = signInKey(directory, account);
   if (signedIn) return signedIn;
   if (env[variable]?.trim()) return env[variable].trim();
   const base = env.WAKATIME_HOME || env.USERPROFILE || env.HOME || homedir();

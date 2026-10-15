@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { rmSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Store } from "../src/store.mjs";
 import { sendBatch, Sync } from "../src/sync.mjs";
@@ -162,4 +162,56 @@ test("missing credentials never activate collection; only one host uploads; disa
     await a.tick(now + 4000);
     expect(uploads).toBe(1);
   } finally { await a.stop(); await b.stop(); server.stop(true); rmSync(directory, { recursive: true, maxRetries: 5, retryDelay: 50 }); }
+});
+
+test("uses the bound account and resumes after its rejected key is rotated", async () => {
+  const directory = tempDirectory(), file = join(directory, "plugin-auth.json");
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch() {
+    return Response.json({ rows: [], total: 0, offset: 0 });
+  } });
+  const options = readOptions({ gatewayUrl: server.url.origin, authAccount: "wakatime#new" });
+  const accounts = { wakatime: { type: "api", key: "old-key" }, "wakatime#new": { type: "api", key: "expired-key" } };
+  const usedKeys = [];
+  const worker = new Sync(directory, options, { env: { WAKATIME_HOME: directory }, fetcher: async (_url, init) => {
+    const key = Buffer.from(init.headers.Authorization.slice(6), "base64").toString();
+    usedKeys.push(key);
+    return key === "rotated-key" ? Response.json({ responses: [[{}, 201]] }, { status: 201 }) :
+      new Response(null, { status: 401 });
+  } });
+  try {
+    writeFileSync(file, JSON.stringify(accounts));
+    enqueue(worker.store, 1);
+    const now = Date.now();
+    await worker.tick(now);
+    expect(worker.store.status()).toMatchObject({ credentials: "invalid-key", pending: 1, sent: 0 });
+    await worker.tick(now + 1000);
+    expect(usedKeys).toEqual(["expired-key"]);
+    accounts["wakatime#new"].key = "rotated-key";
+    writeFileSync(file, JSON.stringify(accounts));
+    await worker.tick(now + 2000);
+    expect(usedKeys).toEqual(["expired-key", "rotated-key"]);
+    expect(worker.store.status()).toMatchObject({ credentials: "configured", pending: 0, sent: 1 });
+    delete accounts["wakatime#new"];
+    writeFileSync(file, JSON.stringify(accounts));
+    enqueue(worker.store, 2);
+    await worker.tick(now + 4000);
+    expect(usedKeys).toHaveLength(2);
+    expect(worker.store.status()).toMatchObject({ credentials: "key-account-missing", pending: 1 });
+  } finally { await worker.stop(); server.stop(true); rmSync(directory, { recursive: true, maxRetries: 5, retryDelay: 50 }); }
+});
+
+test("does not use an old key when a new login creates another account", async () => {
+  const directory = tempDirectory();
+  let uploads = 0;
+  const worker = new Sync(directory, readOptions(), { env: { WAKATIME_HOME: directory }, fetcher: async () => { uploads++; } });
+  try {
+    writeFileSync(join(directory, "plugin-auth.json"), JSON.stringify({
+      wakatime: { type: "api", key: "old-key" }, "wakatime#new": { type: "api", key: "new-key" },
+    }));
+    enqueue(worker.store, 1);
+    await worker.tick();
+    expect(uploads).toBe(0);
+    expect(worker.store.status()).toMatchObject({ credentials: "key-account-ambiguous", pending: 1 });
+    expect(worker.store.get("enabledAt")).toBeNull();
+  } finally { await worker.stop(); rmSync(directory, { recursive: true, maxRetries: 5, retryDelay: 50 }); }
 });

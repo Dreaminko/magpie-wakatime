@@ -27,12 +27,15 @@ key 由 Magpie 存到配置目录下的 `plugin-auth.json`，插件只读取这�
 用 `magpie plugin options <name> '<json>'` 设置，全部可选：
 
 - `gatewayUrl`：默认 `http://127.0.0.1:3425`。只接受本机回环地址，端口可改。
+- `authAccount`：绑定 `plugin-auth.json` 中的 WakaTime 账号 ID，例如 `wakatime` 或 `wakatime#xxxxxx`。默认仅在只有一个可用账号时自动选择。
 - `apiKeyEnv`：默认 `WAKATIME_API_KEY`。插件读取这个环境变量的值作为 WakaTime 写入密钥。
 - `project`：默认 `Magpie`。heartbeat 的项目标签，是固定归档名，不代表识别出了真实仓库。
 - `projectByAgent`：按 agent id 覆盖项目标签，例如 `{"codex":"Work"}`。
 - `excludeAgents`：排除某些 agent，用于避开已由其他 WakaTime 集成采集的部分。
 
 写入密钥按顺序取：登录时填写的 key、`apiKeyEnv` 指定的环境变量、`WAKATIME_HOME`（默认用户目录）下 `.wakatime.cfg` 的 `[settings] api_key`。插件只读这些来源，不修改它们。缺少密钥时只记录状态，不开始采集，也不确定首次启用时间。
+
+[Magpie 的多账号机制](https://usemagpie.ai/docs/plugins#accounts)可能把更换后的密钥保存为新的 `wakatime#…` 账号。存在多个可用账号且未绑定时，`status.credentials` 显示 `key-account-ambiguous` 并暂停采集和上传；请用 `magpie plugin options magpie-wakatime '{"authAccount":"wakatime#xxxxxx"}'` 绑定新账号（替换为实际 ID，并保留已有选项）。绑定账号被删除或密钥为空时显示 `key-account-missing`，不会切换到其他账号或密钥来源。每次同步都会重新读取绑定账号的密钥，密钥更新后会恢复上传。
 
 ## 会发送什么
 

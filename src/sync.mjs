@@ -113,8 +113,12 @@ export class Sync {
     if (!this.enabled()) { this.store.set("runtime", "disabled"); this.abort.abort(); return; }
     if (!this.store.lease(this.owner, now)) return;
     let key;
-    try { key = readApiKey(this.directory, this.options.apiKeyEnv, this.env); }
-    catch { this.store.set("credentials", "key-config-unreadable"); this.store.release(this.owner); return; }
+    try { key = readApiKey(this.directory, this.options.apiKeyEnv, this.env, this.options.authAccount); }
+    catch (error) {
+      this.store.set("credentials", ["key-account-missing", "key-account-ambiguous"].includes(error.message) ? error.message : "key-config-unreadable");
+      this.store.release(this.owner);
+      return;
+    }
     if (!key) {
       this.store.set("credentials", "missing-key");
       this.store.release(this.owner);

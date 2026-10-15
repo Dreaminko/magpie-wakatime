@@ -49,6 +49,36 @@ test("prefers the key entered in the app sign-in over environment and file keys"
   } finally { rmSync(dir, { recursive: true }); }
 });
 
+test("requires an explicit binding when multiple WakaTime accounts exist", () => {
+  const dir = tempDirectory();
+  const file = join(dir, "plugin-auth.json");
+  const env = { WAKATIME_HOME: dir, WAKATIME_API_KEY: "env-key" };
+  try {
+    expect(readOptions({ authAccount: "wakatime#new" }).authAccount).toBe("wakatime#new");
+    for (const authAccount of ["other", "wakatime#", "wakatime#two accounts", 42]) {
+      expect(() => readOptions({ authAccount })).toThrow("invalid-config");
+    }
+    const accounts = {
+      wakatime: { type: "api", key: "old-key" },
+      "wakatime#new": { type: "api", key: "new-key" },
+    };
+    for (const entries of [Object.entries(accounts), Object.entries(accounts).reverse()]) {
+      writeFileSync(file, JSON.stringify(Object.fromEntries(entries)));
+      expect(() => readApiKey(dir, "WAKATIME_API_KEY", env)).toThrow("key-account-ambiguous");
+      expect(readApiKey(dir, "WAKATIME_API_KEY", env, "wakatime#new")).toBe("new-key");
+      expect(readApiKey(dir, "WAKATIME_API_KEY", env, "wakatime")).toBe("old-key");
+    }
+    accounts["wakatime#new"].key = "rotated-key";
+    writeFileSync(file, JSON.stringify(accounts));
+    expect(readApiKey(dir, "WAKATIME_API_KEY", env, "wakatime#new")).toBe("rotated-key");
+    delete accounts["wakatime#new"];
+    writeFileSync(file, JSON.stringify(accounts));
+    expect(() => readApiKey(dir, "WAKATIME_API_KEY", env, "wakatime#new")).toThrow("key-account-missing");
+    rmSync(file);
+    expect(() => readApiKey(dir, "WAKATIME_API_KEY", env, "wakatime#new")).toThrow("key-account-missing");
+  } finally { rmSync(dir, { recursive: true }); }
+});
+
 test("stops when its local or npm entry is disabled or removed", () => {
   const dir = tempDirectory();
   try {
