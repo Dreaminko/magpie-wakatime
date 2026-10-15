@@ -1,0 +1,65 @@
+import { expect, test } from "bun:test";
+import { writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tempDirectory } from "./helpers.mjs";
+import { readOptions, readApiKey, pluginEnabled } from "../src/config.mjs";
+
+test("accepts only loopback gateway origins", () => {
+  expect(readOptions({}).gatewayUrl).toBe("http://127.0.0.1:3425");
+  expect(readOptions({ gatewayUrl: "http://[::1]:4567/" }).gatewayUrl).toBe("http://[::1]:4567");
+  for (const gatewayUrl of ["https://example.com", "http://127.0.0.1.evil", "http://user:secret@localhost", "http://localhost/path", "ftp://localhost"]) {
+    expect(() => readOptions({ gatewayUrl })).toThrow("invalid-config");
+  }
+  expect(() => readOptions({ projectByAgent: [] })).toThrow("invalid-config");
+  expect(() => readOptions({ excludeAgents: "codex" })).toThrow("invalid-config");
+});
+
+test("reads only the selected key source without modifying the standard config", () => {
+  const dir = tempDirectory();
+  try {
+    const file = join(dir, ".wakatime.cfg");
+    writeFileSync(file, "[other]\napi_key=wrong\n[settings]\napi_key = test-file-key\n");
+    const env = { WAKATIME_HOME: dir, CUSTOM_KEY: "test-env-key" };
+    expect(readApiKey(dir, "CUSTOM_KEY", env)).toBe("test-env-key");
+    expect(readApiKey(dir, "MISSING", env)).toBe("test-file-key");
+    writeFileSync(file, "[settings]\napi_key=\n");
+    expect(readApiKey(dir, "MISSING", env)).toBeNull();
+  } finally { rmSync(dir, { recursive: true }); }
+});
+
+test("prefers the key entered in the app sign-in over environment and file keys", () => {
+  const dir = tempDirectory();
+  try {
+    writeFileSync(join(dir, ".wakatime.cfg"), "[settings]\napi_key = file-key\n");
+    const env = { WAKATIME_HOME: dir, WAKATIME_API_KEY: "env-key" };
+    writeFileSync(join(dir, "plugin-auth.json"), "{broken");
+    expect(readApiKey(dir, "WAKATIME_API_KEY", env)).toBe("env-key");
+    writeFileSync(join(dir, "plugin-auth.json"), JSON.stringify({ zcode: { type: "oauth", access: "token" } }));
+    expect(readApiKey(dir, "WAKATIME_API_KEY", env)).toBe("env-key");
+    writeFileSync(join(dir, "plugin-auth.json"), JSON.stringify({
+      wakatime: { type: "api", key: "" },
+      "wakatime#2": { type: "api", key: "second-account" },
+    }));
+    expect(readApiKey(dir, "WAKATIME_API_KEY", env)).toBe("second-account");
+    writeFileSync(join(dir, "plugin-auth.json"), JSON.stringify({ wakatime: { type: "api", key: " signed-in-key " } }));
+    expect(readApiKey(dir, "WAKATIME_API_KEY", env)).toBe("signed-in-key");
+    rmSync(join(dir, ".wakatime.cfg"));
+    rmSync(join(dir, "plugin-auth.json"));
+    expect(readApiKey(dir, "MISSING_KEY", { WAKATIME_HOME: dir })).toBeNull();
+  } finally { rmSync(dir, { recursive: true }); }
+});
+
+test("stops when its local or npm entry is disabled or removed", () => {
+  const dir = tempDirectory();
+  try {
+    const file = join(dir, "plugins.json");
+    writeFileSync(file, JSON.stringify({ plugins: [{ spec: "F:/plugin", off: false }] }));
+    expect(pluginEnabled(dir, "F:/plugin")).toBe(true);
+    writeFileSync(file, JSON.stringify({ plugins: [{ spec: "magpie-wakatime@0.1.0", off: true }] }));
+    expect(pluginEnabled(dir, "F:/plugin")).toBe(false);
+    writeFileSync(file, JSON.stringify({ plugins: [{ spec: "magpie-wakatime@0.1.0" }] }));
+    expect(pluginEnabled(dir, "F:/plugin")).toBe(true);
+    writeFileSync(file, "{broken");
+    expect(pluginEnabled(dir, "F:/plugin")).toBe(false);
+  } finally { rmSync(dir, { recursive: true }); }
+});

@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Pack and build output
+*.tgz
+
+# Local scratch, test sandboxes and plugin state
+.work/
+*.sqlite*
+*.log
+
+# Credentials; never commit a real key or a copy of a config that holds one
+.env
+.env.*
+!.env.example
+.wakatime.cfg
+plugin-auth.json
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
