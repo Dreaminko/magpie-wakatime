@@ -11,6 +11,7 @@ export function sourceId(row, salt) {
 }
 
 export function mapRow(row, options, salt) {
+  if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error("invalid-row");
   if (row.computer || row.rejected || (row.source && row.source !== "through") ||
       (row.via && row.via !== "through") || options.excludeAgents.includes(row.agent)) return null;
   const time = typeof row.t === "string" ? Date.parse(row.t) / 1000 : NaN;

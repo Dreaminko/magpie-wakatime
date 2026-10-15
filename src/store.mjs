@@ -109,7 +109,7 @@ export class Store {
     const counts = { pending: 0, sent: 0, rejected: 0, changed: 0 };
     for (const r of this.db.query("SELECT state, count(*) AS n FROM queue GROUP BY state").all()) counts[r.state] = r.n;
     counts.changed = this.db.query("SELECT count(*) AS n FROM queue WHERE changed=1").get().n;
-    for (const key of ["enabledAt", "lastConfirmedAt", "lastCompleteDay", "backfillDay", "sourceError", "sendError", "credentials", "sendAfter", "runtime"]) counts[key] = this.get(key);
+    for (const key of ["enabledAt", "lastConfirmedAt", "lastCompleteDay", "backfillDay", "sourceError", "lastInvalidRow", "sendError", "credentials", "sendAfter", "runtime"]) counts[key] = this.get(key);
     counts.active = !!this.db.query("SELECT 1 FROM lease WHERE id=1 AND expires>?").get(Date.now());
     return counts;
   }

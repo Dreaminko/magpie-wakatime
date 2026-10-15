@@ -72,6 +72,8 @@ bun src/sync.mjs preview [--directory <Magpie 配置目录>] [--limit 5]
 
 `status` 显示队列数量、扫描进度、最后确认时间和错误类别；`preview` 打印脱敏后的待发送映射，不访问 WakaTime。状态库在 `<Magpie 配置目录>/magpie-wakatime/state.sqlite`。
 
+单条记录的时间或 token 数据无效时跳过该条，继续采集。`status.lastInvalidRow` 保留最近一次异常的日期、分页偏移、加盐摘要 ID 和错误类别，不保存原始内容；记录修正后可在后续复查中重新采集。整页响应格式错误仍会停止并保留游标，等待接口恢复。
+
 ## 采集范围与限制
 
 - 只读本机网关的 `through` 记录，不采集直连（direct）、其他机器或导入（reported）的记录。

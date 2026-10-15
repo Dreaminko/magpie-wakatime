@@ -2,10 +2,35 @@ import { expect, test } from "bun:test";
 import { collectDay } from "../src/source.mjs";
 import { Store } from "../src/store.mjs";
 import { readOptions } from "../src/config.mjs";
+import { sourceId } from "../src/map.mjs";
 
 const day = "2026-10-15";
 const row = (id) => ({ t: `${day}T10:00:00+08:00`, route_id: id, agent: "codex",
   provider: "mock", model: "mock", in: 10, out: 5, cache_read: 0, cache_write: 0 });
+
+test("isolates invalid rows, advances the cursor and collects corrected rows on rescan", async () => {
+  let rows = [null, row(1), { ...row(2), in: -1, prompt: "private prompt", key: "private key" }, row(3)];
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch(request) {
+    const offset = Number(new URL(request.url).searchParams.get("offset"));
+    return Response.json({ rows: rows.slice(offset, offset + 3), total: rows.length, offset });
+  } });
+  const store = new Store(":memory:");
+  const options = readOptions({ gatewayUrl: server.url.origin });
+  try {
+    store.activate(options.gatewayUrl, Date.parse(`${day}T00:00:00+08:00`));
+    expect(await collectDay(store, options, day, { budget: 1 })).toBe(false);
+    expect(store.get(`scan:${day}`).offset).toBe(3);
+    expect(store.status()).toMatchObject({ pending: 1, lastInvalidRow: {
+      day, offset: 2, id: sourceId(row(2), store.get("salt")), error: "invalid-row",
+    } });
+    expect(JSON.stringify(store.status())).not.toContain("private");
+    expect(await collectDay(store, options, day)).toBe(true);
+    expect(store.status()).toMatchObject({ pending: 2, lastCompleteDay: day });
+    rows = [row(0), row(1), row(2), row(3)];
+    expect(await collectDay(store, options, day)).toBe(true);
+    expect(store.status().pending).toBe(4);
+  } finally { store.close(); server.stop(true); }
+});
 
 test("resumes paginated scans and rechecks a moving head without duplicating requests", async () => {
   let rows = Array.from({ length: 501 }, (_, i) => row(i));

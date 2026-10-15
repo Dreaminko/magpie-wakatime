@@ -17,30 +17,36 @@ async function page(options, day, offset, signal) {
   let body;
   try { body = await response.json(); } catch { throw new Error("source-schema"); }
   if (!Array.isArray(body?.rows) || body.rows.length > 500 || !Number.isSafeInteger(body.total) ||
-      body.total < body.rows.length || body.offset !== Math.min(offset, body.total) ||
-      body.rows.some((r) => !r || typeof r !== "object")) throw new Error("source-schema");
+      body.total < body.rows.length || body.offset !== Math.min(offset, body.total)) throw new Error("source-schema");
   if (body.rows.length === 0 && offset < body.total) throw new Error("source-schema");
   return body;
 }
 
 export async function collectDay(store, options, day, { budget = 20, signal } = {}) {
   const key = `scan:${day}`, salt = store.get("salt");
+  const rowId = (row) => sourceId(row ?? {}, salt);
   let cursor = store.get(key) ?? { offset: 0 };
   for (let n = 0; n < budget; n++) {
     signal?.throwIfAborted();
     const body = await page(options, day, cursor.offset, signal);
-    const head = body.rows.length ? sourceId(body.rows[0], salt) : null;
+    const head = body.rows.length ? rowId(body.rows[0]) : null;
     if (cursor.offset === 0) cursor = { offset: 0, head, total: body.total };
     const items = [];
-    for (const row of body.rows) {
-      const payload = mapRow(row, options, salt);
-      if (payload && payload.time * 1000 >= store.get("enabledAt")) items.push({ id: sourceId(row, salt), payload });
+    for (const [index, row] of body.rows.entries()) {
+      let payload;
+      try { payload = mapRow(row, options, salt); }
+      catch (error) {
+        if (error.message !== "invalid-row") throw error;
+        store.set("lastInvalidRow", { day, offset: cursor.offset + index, id: rowId(row), error: "invalid-row" });
+        continue;
+      }
+      if (payload && payload.time * 1000 >= store.get("enabledAt")) items.push({ id: rowId(row), payload });
     }
     cursor = { ...cursor, offset: cursor.offset + body.rows.length };
     store.ingest(items, key, cursor);
     if (cursor.offset >= body.total) {
       const check = await page(options, day, 0, signal);
-      const stable = check.total === cursor.total && (check.rows.length ? sourceId(check.rows[0], salt) : null) === cursor.head;
+      const stable = check.total === cursor.total && (check.rows.length ? rowId(check.rows[0]) : null) === cursor.head;
       store.set(key, null);
       if (stable && day >= (store.get("lastCompleteDay") ?? "")) store.set("lastCompleteDay", day);
       return stable;

@@ -4,12 +4,35 @@ import { join } from "node:path";
 import { Store } from "../src/store.mjs";
 import { sendBatch, Sync } from "../src/sync.mjs";
 import { readOptions } from "../src/config.mjs";
+import { localDay } from "../src/source.mjs";
 import { mapRow } from "../src/map.mjs";
 import { tempDirectory } from "./helpers.mjs";
 
 const payload = { entity: "magpie", type: "app", category: "ai coding", time: 1792026000.123,
   project: "Magpie", ai_input_tokens: 110, ai_cached_input_tokens: 20, ai_output_tokens: 30, is_write: false };
 function enqueue(store, n) { store.ingest(Array.from({ length: n }, (_, i) => ({ id: `row-${i}`, payload }))); }
+
+test("continues to today's usage when backfill contains an invalid row", async () => {
+  const directory = tempDirectory();
+  const now = Date.now(), today = localDay(now), yesterday = localDay(now, -1);
+  const requestedDays = [];
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch(request) {
+    const day = new URL(request.url).searchParams.get("period").split("..")[0];
+    requestedDays.push(day);
+    const rows = day === yesterday ? [{ t: "bad", in: 10, out: 2 }] :
+      [{ t: new Date(now).toISOString(), agent: "codex", in: 10, out: 2 }];
+    return Response.json({ rows, total: rows.length, offset: 0 });
+  } });
+  const options = readOptions({ gatewayUrl: server.url.origin });
+  const worker = new Sync(directory, options);
+  try {
+    worker.store.activate(options.gatewayUrl, new Date(`${yesterday}T00:00:00`).getTime());
+    await worker.scan(now);
+    expect(requestedDays).toContain(today);
+    expect(worker.store.status()).toMatchObject({ pending: 1, lastCompleteDay: today,
+      lastInvalidRow: { day: yesterday, error: "invalid-row" } });
+  } finally { await worker.stop(); server.stop(true); rmSync(directory, { recursive: true, maxRetries: 5, retryDelay: 50 }); }
+});
 
 test("preserves each model in a mixed bulk request and its retry", async () => {
   const store = new Store(":memory:");
