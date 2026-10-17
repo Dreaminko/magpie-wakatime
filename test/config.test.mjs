@@ -93,3 +93,43 @@ test("stops when its local or npm entry is disabled or removed", () => {
     expect(pluginEnabled(dir, "F:/plugin")).toBe(false);
   } finally { rmSync(dir, { recursive: true }); }
 });
+
+test("recognizes GitHub installations and still honors their disabled state", () => {
+  const dir = tempDirectory();
+  try {
+    const file = join(dir, "plugins.json");
+    for (const spec of [
+      "https://github.com/Dreaminko/magpie-wakatime",
+      "https://github.com/Dreaminko/magpie-wakatime.git",
+      "https://github.com/Dreaminko/magpie-wakatime/",
+      "https://github.com/Dreaminko/magpie-wakatime#v0.1.6",
+      "git+https://github.com/Dreaminko/magpie-wakatime.git#main",
+      "https://github.com/dreaminko/MAGPIE-WAKATIME.git",
+    ]) {
+      writeFileSync(file, JSON.stringify({ plugins: [{ spec }] }));
+      expect(pluginEnabled(dir, "F:/installed-plugin")).toBe(true);
+      writeFileSync(file, JSON.stringify({ plugins: [{ spec, off: true }] }));
+      expect(pluginEnabled(dir, "F:/installed-plugin")).toBe(false);
+    }
+    writeFileSync(file, JSON.stringify({ plugins: [] }));
+    expect(pluginEnabled(dir, "F:/installed-plugin")).toBe(false);
+  } finally { rmSync(dir, { recursive: true }); }
+});
+
+test("does not enable the plugin for unrelated GitHub repositories or hosts", () => {
+  const dir = tempDirectory();
+  try {
+    const file = join(dir, "plugins.json");
+    for (const spec of [
+      "https://github.com/other/magpie-wakatime",
+      "https://github.com/Dreaminko/magpie-wakatime-other",
+      "https://github.com/Dreaminko/magpie-wakatime/tree/main",
+      "https://github.com.evil/Dreaminko/magpie-wakatime",
+      "https://example.com/Dreaminko/magpie-wakatime",
+      "https://example.com/#https://github.com/Dreaminko/magpie-wakatime",
+    ]) {
+      writeFileSync(file, JSON.stringify({ plugins: [{ spec }] }));
+      expect(pluginEnabled(dir, "F:/installed-plugin")).toBe(false);
+    }
+  } finally { rmSync(dir, { recursive: true }); }
+});

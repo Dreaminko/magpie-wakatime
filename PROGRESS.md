@@ -10,8 +10,12 @@ Source plan: PLAN.md. This file records the current state; the status paragraph 
 
 0.1.5 reports the machine name, operating system and IANA timezone. Local gateway hooks capture project and branch names at request time and associate them with usage by client response ID. Missing context uses the configured project fallback. Explicit project mappings take priority, and raw working directories are not stored.
 
+0.1.6 recognizes the canonical GitHub repository URL as an enabled installation, including `.git`, trailing-slash and ref-suffixed forms. This prevents the plugin from disabling itself after a URL-based install while retaining Magpie's explicit `off` behavior.
+
 ## Verified
 
+- `bun test`: 42 pass, 0 fail, exit 0. GitHub URL variants, explicit disablement, unrelated repositories and unrelated hosts are covered.
+- `npm pack --dry-run --json --ignore-scripts`: version 0.1.6, 12 expected files.
 - `bun test`: 40 pass, 0 fail, exit 0. Bun still emits the existing `EBADFD` directory diagnostic.
 - Cached input split: `in=100, cache_read=20, cache_write=10, out=30` maps to `ai_input_tokens: 110`, `ai_cached_input_tokens: 20`, `ai_output_tokens: 30`, which adds up to the row total; a row that read no cache omits the cached field, and a later revision that only moves cached tokens is still recorded as a change.
 - `npm pack --dry-run --json --ignore-scripts`: version 0.1.5, 12 files, only the entry, `src`, `assets/wakatime.png`, `README.md`, `LICENSE` and package metadata.
@@ -24,6 +28,7 @@ Source plan: PLAN.md. This file records the current state; the status paragraph 
 - Real upload with a valid WakaTime key: the user ran their own end-to-end test on 2026-10-15 and confirmed the heartbeats arrive.
 - Agent-named entities: an isolated run (mock usage API, mock `heartbeats.bulk`) queued one `codex` request, `preview` printed `"entity": "codex"`, and the captured request body carried the same `entity` with the mapped token counts and salted session.
 - Plugin icon: `package.json` gives `magpie.icon` the `data:image/` prefix magpie requires and stays well under its size cap, and decoding it returns the exact bytes of `assets/wakatime.png`; the mark is painted in `#527da4`, so it reads on the light theme's white card and on the dark one's `#232327`. npm's `/latest` carries such a field through to the discovery card (checked on `@magpie-community/opencode-zen-free-auth`, whose reply lists `magpie.icon` and `magpie.maxConcurrency`).
+- Live recovery on 2026-10-17: after switching the real Magpie installation to this checkout, synchronization returned to `runtime: running` with no upload or source error, sent 700 queued heartbeats, and a WakaTime API read confirmed today's heartbeats.
 
 ## Not verified
 

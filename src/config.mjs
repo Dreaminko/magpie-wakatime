@@ -68,7 +68,9 @@ export function pluginEnabled(directory, root) {
     const list = JSON.parse(readFileSync(join(directory, "plugins.json"), "utf8"));
     const normal = (s) => resolve(s.replace(/^file:\/\//, "")).replace(/\\/g, "/").toLowerCase();
     return list.plugins.some((p) => typeof p.spec === "string" && !p.off &&
-      (/^magpie-wakatime(?:@[^/]+)?$/.test(p.spec) || normal(p.spec) === normal(root)));
+      (/^magpie-wakatime(?:@[^/]+)?$/.test(p.spec) ||
+       /^(?:git\+)?https:\/\/github\.com\/Dreaminko\/magpie-wakatime(?:\.git)?\/?(?:#[^\s]+)?$/i.test(p.spec) ||
+       normal(p.spec) === normal(root)));
   } catch { return false; }
 }
 
