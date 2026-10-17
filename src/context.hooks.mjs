@@ -1,0 +1,50 @@
+import { execFile } from "node:child_process";
+import { stat } from "node:fs/promises";
+import { basename, dirname, isAbsolute, resolve } from "node:path";
+import { promisify } from "node:util";
+import { contextKey } from "./map.mjs";
+
+const exec = promisify(execFile);
+let worker;
+
+export function bindWorker(value) { worker = value; }
+
+function label(value) {
+  return typeof value === "string" && value.length <= 255 && !/[\x00-\x1f\x7f]/.test(value) ? value.trim() : "";
+}
+
+// Snapshot before routing; delayed usage scans must not read a newer HEAD.
+export async function onRequest(_body, ctx) {
+  const current = worker;
+  if (!current || current.stopped || !current.enabled() || current.store.get("enabledAt") === null ||
+      ctx.origin !== "local" || current.options.excludeAgents.includes(ctx.agent) ||
+      typeof ctx.cwd !== "string" || !isAbsolute(ctx.cwd) || ctx.signal?.aborted) return;
+  try {
+    if (!(await stat(ctx.cwd)).isDirectory()) return;
+    const git = async (...args) => {
+      try {
+        const { stdout } = await exec("git", ["-C", ctx.cwd, ...args], {
+          encoding: "utf8", timeout: 400, maxBuffer: 4096, windowsHide: true, signal: ctx.signal,
+        });
+        return stdout.trim();
+      } catch { return ""; }
+    };
+    const [location, branch] = await Promise.all([
+      git("rev-parse", "--show-toplevel", "--git-common-dir"), git("symbolic-ref", "--quiet", "--short", "HEAD"),
+    ]);
+    const [root, common] = location.split(/\r?\n/);
+    const projectRoot = common && basename(common) === ".git" ? dirname(resolve(ctx.cwd, common)) : root;
+    const project = label(basename(projectRoot || ctx.cwd));
+    if (!project || ctx.signal?.aborted || current !== worker || current.stopped) return;
+    ctx.state.wakatime = { project };
+    if (root && label(branch)) ctx.state.wakatime.branch = label(branch);
+  } catch { /* Context is optional; leave the agent request unchanged. */ }
+}
+
+export async function onResponse(reply, ctx) {
+  if (!worker || worker.stopped || !worker.enabled() || ctx.signal?.aborted || !ctx.state.wakatime) return;
+  const key = contextKey(ctx.agent, reply?.id || reply?.responseId, worker.store.get("salt"));
+  if (!key) return;
+  try { worker.store.set(key, ctx.state.wakatime); }
+  catch { /* Usage polling continues when a best-effort notification is lost. */ }
+}

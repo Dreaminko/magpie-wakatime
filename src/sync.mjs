@@ -2,6 +2,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
+import { hostname } from "node:os";
 import { Store } from "./store.mjs";
 import { collectDay, localDay } from "./source.mjs";
 import { readApiKey, defaultDirectory } from "./config.mjs";
@@ -25,6 +26,8 @@ export async function sendBatch(store, key, { now = Date.now(), fetcher = fetch,
       headers: {
         "Content-Type": "application/json", Authorization: `Basic ${Buffer.from(key).toString("base64")}`,
         "User-Agent": defaultUserAgent,
+        "X-Machine-Name": new URLSearchParams({ name: hostname() }).toString().slice(5),
+        Timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       },
       body: `[${batch.map((r) => r.payload).join(",")}]`,
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10_000)]) : AbortSignal.timeout(10_000),

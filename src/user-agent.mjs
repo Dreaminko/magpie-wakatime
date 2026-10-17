@@ -1,7 +1,8 @@
-import { platform, release } from "node:os";
+import { arch, platform, release } from "node:os";
 import pkg from "../package.json" with { type: "json" };
 
-export const defaultUserAgent = `Magpie/unknown (${platform()} ${release()}) magpie-wakatime/${pkg.version}`;
+const os = platform() === "win32" ? "windows" : platform();
+export const defaultUserAgent = `Magpie/unknown (${os}-${release()}-${arch()}) magpie-wakatime/${pkg.version}`;
 
 function normalize(value) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, "-") : "";

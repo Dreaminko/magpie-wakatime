@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { hostname, platform, release } from "node:os";
 import { Store } from "../src/store.mjs";
 import { sendBatch, Sync } from "../src/sync.mjs";
 import { readOptions } from "../src/config.mjs";
@@ -66,6 +67,10 @@ test("sends at most 25 and confirms each bulk result independently", async () =>
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
     expect(request.headers.get("authorization")).toBe("Basic MTIzNDU=");
     expect(request.headers.get("user-agent")).toContain("Magpie/");
+    const os = platform() === "win32" ? "windows" : platform();
+    expect(request.headers.get("user-agent")).toContain(`(${os}-${release()}-`);
+    expect(new URLSearchParams(`name=${request.headers.get("x-machine-name")}`).get("name")).toBe(hostname());
+    expect(request.headers.get("timezone")).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
     expect(new URL(request.url).search).toBe("");
     posted = await request.json();
     return Response.json({ responses: posted.map((_, i) => [i === 0 ? { errors: { entity: ["bad"] } } : { data: { id: `${i}` } }, i === 0 ? 400 : 201]) }, { status: 201 });

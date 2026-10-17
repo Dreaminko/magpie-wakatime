@@ -10,7 +10,11 @@ export function sourceId(row, salt) {
     row.host ?? "", row.model ?? "", row.rid || row.response_id || ""], salt);
 }
 
-export function mapRow(row, options, salt) {
+export function contextKey(agent, response, salt) {
+  return typeof response === "string" && response ? `context:${digest([agent ?? "", response], salt)}` : null;
+}
+
+export function mapRow(row, options, salt, context) {
   if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error("invalid-row");
   if (row.computer || row.rejected || (row.source && row.source !== "through") ||
       (row.via && row.via !== "through") || options.excludeAgents.includes(row.agent)) return null;
@@ -29,10 +33,11 @@ export function mapRow(row, options, salt) {
   const cacheRead = values[2];
   const payload = {
     entity: agent || "magpie", type: "app", category: "ai coding", time,
-    project: Object.hasOwn(options.projectByAgent, row.agent) ? options.projectByAgent[row.agent] : options.project,
+    project: Object.hasOwn(options.projectByAgent, row.agent) ? options.projectByAgent[row.agent] : context?.project || options.project,
     ai_input_tokens: values[0] + values[3], ai_output_tokens: values[1], is_write: false,
     user_agent: userAgent(row.served || row.model, row.effort),
   };
+  if (context?.branch) payload.branch = context.branch;
   if (cacheRead > 0) payload.ai_cached_input_tokens = cacheRead;
   const session = row.native_session || row.session;
   if (session) payload.ai_session = digest([row.agent ?? "", session], salt);

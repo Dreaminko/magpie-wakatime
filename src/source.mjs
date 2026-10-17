@@ -1,4 +1,4 @@
-import { mapRow, sourceId } from "./map.mjs";
+import { contextKey, mapRow, sourceId } from "./map.mjs";
 
 export function localDay(value = Date.now(), offset = 0) {
   const date = new Date(value);
@@ -34,7 +34,10 @@ export async function collectDay(store, options, day, { budget = 20, signal } = 
     const items = [];
     for (const [index, row] of body.rows.entries()) {
       let payload;
-      try { payload = mapRow(row, options, salt); }
+      try {
+        const context = contextKey(row?.agent, row?.response_id, salt);
+        payload = mapRow(row, options, salt, context ? store.get(context) : null);
+      }
       catch (error) {
         if (error.message !== "invalid-row") throw error;
         store.set("lastInvalidRow", { day, offset: cursor.offset + index, id: rowId(row), error: "invalid-row" });

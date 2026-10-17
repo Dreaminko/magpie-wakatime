@@ -99,6 +99,19 @@ test("coordinates independent SQLite connections and expires abandoned leases", 
   } finally { a.close(); b.close(); rmSync(directory, { recursive: true }); }
 });
 
+test("refreshes pending project and branch metadata without resending confirmed usage", () => {
+  const store = new Store(":memory:");
+  try {
+    store.ingest([item("a")]);
+    const updated = { ...item("a"), payload: { ...item("a").payload, project: "repo", branch: "main" } };
+    store.ingest([updated]);
+    expect(JSON.parse(store.pending(0)[0].payload)).toMatchObject({ project: "repo", branch: "main" });
+    store.ack("a", 201, 0);
+    store.ingest([{ ...updated, payload: { ...updated.payload, branch: "next" } }]);
+    expect(store.status()).toMatchObject({ sent: 1, pending: 0, changed: 1 });
+  } finally { store.close(); }
+});
+
 test("keeps failed rows until due and quarantines permanent item failures", () => {
   const store = new Store(":memory:");
   try {
