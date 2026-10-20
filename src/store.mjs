@@ -68,7 +68,8 @@ export class Store {
             previous.ai_cached_input_tokens !== payload.ai_cached_input_tokens ||
             previous.ai_output_tokens !== payload.ai_output_tokens ||
             previous.user_agent !== payload.user_agent ||
-            previous.project !== payload.project || previous.branch !== payload.branch;
+            previous.project !== payload.project || previous.branch !== payload.branch ||
+            previous.language !== payload.language;
           if (different && old.state === "pending") {
             this.db.query("UPDATE queue SET payload=? WHERE id=?").run(JSON.stringify(payload), id);
           } else if (different) {

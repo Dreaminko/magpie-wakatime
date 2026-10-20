@@ -91,11 +91,12 @@ test("names the entity after the agent and falls back when it is unusable", () =
 });
 
 test("uses request project metadata while keeping explicit agent overrides", () => {
-  const context = { project: "real-repo", branch: "feature/context" };
+  const context = { project: "real-repo", branch: "feature/context", language: "TypeScript" };
   expect(mapRow(row, options, "salt", context)).toMatchObject(context);
   expect(mapRow(row, { ...options, projectByAgent: { codex: "Work" } }, "salt", context))
-    .toMatchObject({ project: "Work", branch: "feature/context" });
+    .toMatchObject({ project: "Work", branch: "feature/context", language: "TypeScript" });
   expect(mapRow(row, options, "salt").branch).toBeUndefined();
+  expect(mapRow(row, options, "salt").language).toBeUndefined();
 });
 
 test("deduplicates price/token revisions but preserves separate provider attempts", () => {

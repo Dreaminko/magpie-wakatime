@@ -3,9 +3,21 @@ import { stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 import { promisify } from "node:util";
 import { contextKey } from "./map.mjs";
+import { detectLanguage } from "./language.mjs";
 
 const exec = promisify(execFile);
 let worker;
+const languages = new Map();
+const LANGUAGE_CACHE_LIMIT = 100;
+
+async function trackedFiles(cwd, signal) {
+  try {
+    const { stdout } = await exec("git", ["-C", cwd, "ls-files", "-z"], {
+      encoding: "utf8", timeout: 600, maxBuffer: 16 * 1024 * 1024, windowsHide: true, signal,
+    });
+    return stdout;
+  } catch { return ""; }
+}
 
 export function bindWorker(value) { worker = value; }
 
@@ -29,15 +41,24 @@ export async function onRequest(_body, ctx) {
         return stdout.trim();
       } catch { return ""; }
     };
-    const [location, branch] = await Promise.all([
+    const key = resolve(ctx.cwd);
+    const [location, branch, files] = await Promise.all([
       git("rev-parse", "--show-toplevel", "--git-common-dir"), git("symbolic-ref", "--quiet", "--short", "HEAD"),
+      languages.has(key) ? "" : trackedFiles(ctx.cwd, ctx.signal),
     ]);
     const [root, common] = location.split(/\r?\n/);
     const projectRoot = common && basename(common) === ".git" ? dirname(resolve(ctx.cwd, common)) : root;
     const project = label(basename(projectRoot || ctx.cwd));
     if (!project || ctx.signal?.aborted || current !== worker || current.stopped) return;
+    let language = languages.get(key);
+    if (language === undefined) {
+      language = detectLanguage(files);
+      if (languages.size >= LANGUAGE_CACHE_LIMIT) languages.delete(languages.keys().next().value);
+      languages.set(key, language);
+    }
     ctx.state.wakatime = { project };
     if (root && label(branch)) ctx.state.wakatime.branch = label(branch);
+    if (language) ctx.state.wakatime.language = language;
   } catch { /* Context is optional; leave the agent request unchanged. */ }
 }
 

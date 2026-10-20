@@ -38,6 +38,7 @@ export function mapRow(row, options, salt, context) {
     user_agent: userAgent(row.served || row.model, row.effort),
   };
   if (context?.branch) payload.branch = context.branch;
+  if (context?.language) payload.language = context.language;
   if (cacheRead > 0) payload.ai_cached_input_tokens = cacheRead;
   const session = row.native_session || row.session;
   if (session) payload.ai_session = digest([row.agent ?? "", session], salt);

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { chmodSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bindWorker, onRequest, onResponse } from "../src/context.hooks.mjs";
 import { Sync } from "../src/sync.mjs";
@@ -15,6 +15,8 @@ test("keeps request-time Git metadata across restart and matches the client resp
   const directory = tempDirectory(), repo = join(directory, "real-repo"), nested = join(repo, "src");
   mkdirSync(nested, { recursive: true });
   git(repo, "init", "-q", "--initial-branch=main");
+  for (const file of ["a.ts", "b.ts", "c.js"]) writeFileSync(join(nested, file), "");
+  git(repo, "add", "src");
   const now = Date.now();
   const rows = [
     { t: new Date(now).toISOString(), agent: "codex", model: "gpt-5.4", in: 10, out: 2,
@@ -39,7 +41,7 @@ test("keeps request-time Git metadata across restart and matches the client resp
     store = new Store(join(directory, "magpie-wakatime", "state.sqlite"));
     await collectDay(store, options, localDay(now));
     const payloads = store.pending(now).map((r) => JSON.parse(r.payload));
-    expect(payloads[0]).toMatchObject({ project: "real-repo", branch: "main" });
+    expect(payloads[0]).toMatchObject({ project: "real-repo", branch: "main", language: "TypeScript" });
     expect(payloads.slice(1).map((p) => p.project)).toEqual(["Magpie", "Magpie"]);
     expect(payloads[1].branch).toBeUndefined();
     const metadata = JSON.stringify(store.db.query("SELECT * FROM meta").all());

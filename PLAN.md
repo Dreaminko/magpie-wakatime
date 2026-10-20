@@ -90,7 +90,7 @@ Magpie 会为不同 CLI 调用和应用创建不同宿主，更新时旧宿主�
 | `is_write` | `false`，网关请求不能证明写过文件 |
 | User-Agent | 标识 Magpie 与 magpie-wakatime 插件版本、操作系统；版本未知时使用明确的 unknown 值，不冒用其他编辑器 |
 
-首版不发送 `language`、`branch`、`ai_line_changes`、`ai_prompt_length`、`ai_subscription_plan`，因为当前数据入口不足以可靠得到它们。
+首版不发送 `language`、`branch`、`ai_line_changes`、`ai_prompt_length`、`ai_subscription_plan`，因为当前数据入口不足以可靠得到它们。后续版本已通过请求钩子提供 `branch`，并从工作目录的 Git 索引推断 `language`；其余字段仍不发送。当前行为见 README 与 PROGRESS。
 
 `ai_cached_input_tokens` 未出现在公开 POST 文档中，但 wakatime-cli 会发送它，官方 FAQ 的费用公式也按未命中缓存的输入、缓存输入、输出三项分别计价，因此首版按同一口径拆分输入 token 并发送该字段。模型、供应商和费用可用于本地诊断，但不塞进语言、分支等无关字段。原生模型/费用显示应在后续得到明确写入合同后再扩展。
 

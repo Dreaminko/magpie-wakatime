@@ -12,10 +12,13 @@ Source plan: PLAN.md. This file records the current state; the status paragraph 
 
 0.1.6 recognizes the canonical GitHub repository URL as an enabled installation, including `.git`, trailing-slash and ref-suffixed forms. This prevents the plugin from disabling itself after a URL-based install while retaining Magpie's explicit `off` behavior.
 
+0.1.7 sends a `language` with each heartbeat instead of leaving WakaTime to file all AI usage under `Other`. The request hook reads the working directory's Git index, maps tracked extensions to WakaTime language names and stores the most common language with the project and branch. The scan reads file names only, skips vendored and generated trees, and is cached per directory in the plugin host; directories without a recognized language still send no `language` field.
+
 ## Verified
 
-- `bun test`: 42 pass, 0 fail, exit 0. GitHub URL variants, explicit disablement, unrelated repositories and unrelated hosts are covered.
-- `npm pack --dry-run --json --ignore-scripts`: version 0.1.6, 12 expected files.
+- `bun test`: 46 pass, 0 fail, exit 0. Language detection, Git-backed context, and language refresh of pending rows are covered.
+- `git ls-files` on this checkout maps 22 tracked files to `JavaScript` in 27 ms. A hook-level run against this checkout stored `{"project":"magpie-wakatime","branch":"main","language":"JavaScript"}`.
+- `npm pack --dry-run --json --ignore-scripts`: version 0.1.7, 13 expected files.
 - `bun test`: 40 pass, 0 fail, exit 0. Bun still emits the existing `EBADFD` directory diagnostic.
 - Cached input split: `in=100, cache_read=20, cache_write=10, out=30` maps to `ai_input_tokens: 110`, `ai_cached_input_tokens: 20`, `ai_output_tokens: 30`, which adds up to the row total; a row that read no cache omits the cached field, and a later revision that only moves cached tokens is still recorded as a change.
 - `npm pack --dry-run --json --ignore-scripts`: version 0.1.5, 12 files, only the entry, `src`, `assets/wakatime.png`, `README.md`, `LICENSE` and package metadata.
@@ -35,4 +38,5 @@ Source plan: PLAN.md. This file records the current state; the status paragraph 
 - Live Magpie loading of project context hooks and WakaTime dashboard recognition of machine and project metadata.
 - npm publication and community listing, which stay outside the current scope.
 - WakaTime accepting `ai_cached_input_tokens` in the POST body: the split follows the wakatime-cli payload and the published cost formula, but no heartbeat carrying the field has been sent to WakaTime from here.
+- WakaTime displaying the inferred `language` for `app` heartbeats: the field follows the documented heartbeat schema, but no heartbeat carrying it has been sent to WakaTime from here.
 - The icon as the app draws it: no running Magpie window has been looked at, and this package's published 0.1.1 has no `magpie` field for the npm 发现 card to read.
