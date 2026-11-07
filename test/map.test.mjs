@@ -47,6 +47,40 @@ test("falls back to the recorded model and supports model naming conventions", (
   }
 });
 
+test("preserves named DeepSeek aliases without guessing a release number", () => {
+  for (const [model, effort, token] of [
+    ["deepseek-flash", "max", "deepseek/flash-max"],
+    ["deepseek-chat", undefined, "deepseek/chat"],
+    ["deepseek-reasoner", "high", "deepseek/reasoner-high"],
+    ["deepseek", "high", "deepseek/unknown-high"],
+    ["provider/deepseek-flash", "low", "deepseek/flash-low"],
+    ["deepseek/flash", "max", "deepseek/flash-max"],
+    ["deepseek-flash-max", "MAX", "deepseek/flash-max"],
+  ]) {
+    const result = mapRow({ ...row, model: "gateway-alias", served: model, effort }, options, "salt");
+    expect(result.user_agent.split(" ")[0]).toBe(token);
+  }
+});
+
+test("keeps DeepSeek release variants in the DeepSeek model family", () => {
+  for (const [model, token] of [
+    ["deepseek-r1", "deepseek/r1-max"],
+    ["deepseek/deepseek-r1", "deepseek/r1-max"],
+    ["deepseek-ai/DeepSeek-R1-Distill-Qwen-32B", "DeepSeek/R1-Distill-Qwen-32B-max"],
+    ["deepseek_v3_2", "deepseek/3-2-max"],
+    ["deepseek-v4.1-flash-1017", "deepseek/4.1-flash-1017-max"],
+  ]) {
+    expect(mapRow({ ...row, model, effort: "max" }, options, "salt").user_agent.split(" ")[0]).toBe(token);
+  }
+});
+
+test("does not mistake numbers in reasoning effort for a model version", () => {
+  expect(mapRow({ ...row, model: "gateway-alias", effort: "level2" }, options, "salt").user_agent)
+    .toStartWith("Magpie/unknown ");
+  expect(mapRow({ ...row, model: "gpt-5.4", effort: "level2" }, options, "salt").user_agent)
+    .toStartWith("gpt/5.4-level2 Magpie/");
+});
+
 test("does not invent a model version from missing or unversioned names", () => {
   for (const model of [undefined, null, 7, "", "gateway-alias"]) {
     expect(mapRow({ ...row, model, effort: "high" }, options, "salt").user_agent).toStartWith("Magpie/unknown ");
