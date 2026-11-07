@@ -14,8 +14,12 @@ Source plan: PLAN.md. This file records the current state; the status paragraph 
 
 0.1.7 sends a `language` with each heartbeat instead of leaving WakaTime to file all AI usage under `Other`. The request hook reads the working directory's Git index, maps tracked extensions to WakaTime language names and stores the most common language with the project and branch. The scan reads file names only, skips vendored and generated trees, and is cached per directory in the plugin host; directories without a recognized language still send no `language` field.
 
+0.1.8 preserves DeepSeek model identity for aliases without a release number and keeps R1 variants in the DeepSeek family. Reasoning effort is added after model parsing so its digits cannot be read as a model version.
+
 ## Verified
 
+- `bun test`: 49 pass, 0 fail, exit 0 for 0.1.8. DeepSeek aliases, R1 family names, and model parsing before reasoning effort are covered.
+- `npm pack --dry-run --json --ignore-scripts`: version 0.1.8, 13 expected files. A direct module check also confirmed the package version and User-Agent suffix are 0.1.8.
 - `bun test`: 46 pass, 0 fail, exit 0. Language detection, Git-backed context, and language refresh of pending rows are covered.
 - `git ls-files` on this checkout maps 22 tracked files to `JavaScript` in 27 ms. A hook-level run against this checkout stored `{"project":"magpie-wakatime","branch":"main","language":"JavaScript"}`.
 - `npm pack --dry-run --json --ignore-scripts`: version 0.1.7, 13 expected files.
@@ -35,6 +39,7 @@ Source plan: PLAN.md. This file records the current state; the status paragraph 
 
 ## Not verified
 
+- WakaTime dashboard recognition of the DeepSeek alias model tokens sent by 0.1.8.
 - Live Magpie loading of project context hooks and WakaTime dashboard recognition of machine and project metadata.
 - npm publication and community listing, which stay outside the current scope.
 - WakaTime accepting `ai_cached_input_tokens` in the POST body: the split follows the wakatime-cli payload and the published cost formula, but no heartbeat carrying the field has been sent to WakaTime from here.
