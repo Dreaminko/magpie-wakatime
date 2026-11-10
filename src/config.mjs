@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
+import { canonicalLanguage } from "./language.mjs";
 
 export function readOptions(options = {}) {
   const invalid = () => { throw new Error("invalid-config"); };
@@ -14,9 +15,16 @@ export function readOptions(options = {}) {
     gatewayUrl: url.origin, apiKeyEnv: options.apiKeyEnv ?? "WAKATIME_API_KEY",
     authAccount: options.authAccount ?? null,
     project: options.project ?? "Magpie", projectByAgent: options.projectByAgent ?? {},
-    excludeAgents: options.excludeAgents ?? [],
+    excludeAgents: options.excludeAgents ?? [], languageByDirectory: {},
   };
   const label = (v) => typeof v === "string" && v.trim().length > 0 && v.length <= 255;
+  const overrides = options.languageByDirectory ?? {};
+  if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) invalid();
+  for (const [directory, value] of Object.entries(overrides)) {
+    const language = canonicalLanguage(value);
+    if (typeof directory !== "string" || !isAbsolute(directory) || !language) invalid();
+    result.languageByDirectory[resolve(directory)] = language;
+  }
   if (!label(result.project) || !/^[a-z_][a-z0-9_]*$/i.test(result.apiKeyEnv) ||
       (result.authAccount !== null && (!label(result.authAccount) || !/^wakatime(?:#[^\s#]+)?$/.test(result.authAccount))) ||
       !result.projectByAgent || typeof result.projectByAgent !== "object" || Array.isArray(result.projectByAgent) ||

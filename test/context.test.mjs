@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { bindWorker, onRequest, onResponse } from "../src/context.hooks.mjs";
+import { bindWorker, inspectDirectory, onRequest, onResponse } from "../src/context.hooks.mjs";
 import { Sync } from "../src/sync.mjs";
 import { Store } from "../src/store.mjs";
 import { readOptions } from "../src/config.mjs";
@@ -87,6 +87,76 @@ test("uses a non-Git directory name and skips missing, remote, excluded or disab
     if (ceiling === undefined) delete process.env.GIT_CEILING_DIRECTORIES;
     else process.env.GIT_CEILING_DIRECTORIES = ceiling;
     await worker.stop(); rmSync(directory, { recursive: true, maxRetries: 5, retryDelay: 50 });
+  }
+});
+
+test("includes untracked Swift files and refreshes a cached empty result", async () => {
+  const directory = tempDirectory(), repo = join(directory, "swift-repo"), empty = join(directory, "empty-repo");
+  mkdirSync(repo); mkdirSync(empty);
+  try {
+    git(repo, "init", "-q");
+    writeFileSync(join(repo, ".gitignore"), "Ignored.swift\n");
+    writeFileSync(join(repo, "New.swift"), "");
+    writeFileSync(join(repo, "Ignored.swift"), "");
+    git(empty, "init", "-q");
+    bindWorker(undefined);
+    expect(await inspectDirectory(repo, {}, 0)).toMatchObject({ language: "Swift", source: "files", counts: { Swift: 1 } });
+    expect(await inspectDirectory(empty, {}, 0)).toMatchObject({ language: null, reason: "none" });
+    writeFileSync(join(empty, "App.swift"), "");
+    expect(await inspectDirectory(empty, {}, 9_000)).toMatchObject({ language: null, reason: "none" });
+    expect(await inspectDirectory(empty, {}, 10_001)).toMatchObject({ language: "Swift", source: "files" });
+  } finally {
+    bindWorker(undefined);
+    rmSync(directory, { recursive: true, maxRetries: 5, retryDelay: 50 });
+  }
+});
+
+test("applies the longest directory language override without scanning", async () => {
+  const directory = tempDirectory(), app = join(directory, "app"), app2 = join(directory, "app2");
+  mkdirSync(app); mkdirSync(app2);
+  git(app2, "init", "-q");
+  const options = readOptions({ languageByDirectory: { [app]: "swift" } });
+  try {
+    bindWorker(undefined);
+    expect(await inspectDirectory(app, options, 0)).toMatchObject({ language: "Swift", source: "override" });
+    writeFileSync(join(app2, "main.ts"), "");
+    expect(await inspectDirectory(app2, options, 0)).toMatchObject({ language: "TypeScript", source: "files" });
+  } finally {
+    bindWorker(undefined);
+    rmSync(directory, { recursive: true, maxRetries: 5, retryDelay: 50 });
+  }
+});
+
+test("records untracked Swift from a request without counting dependency sources", async () => {
+  const directory = tempDirectory(), repo = join(directory, "swift-app"), app = join(repo, "App"), pods = join(app, "Pods");
+  mkdirSync(pods, { recursive: true });
+  git(repo, "init", "-q", "--initial-branch=main");
+  writeFileSync(join(app, "App.swift"), "");
+  writeFileSync(join(pods, "Legacy.m"), "");
+  git(repo, "add", "App/Pods");
+  const now = Date.now();
+  const rows = [{ t: new Date(now).toISOString(), agent: "codex", in: 10, out: 2, response_id: "swift-response" }];
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch() {
+    return Response.json({ rows, total: rows.length, offset: 0 });
+  } });
+  const options = readOptions({ gatewayUrl: server.url.origin }), worker = new Sync(directory, options);
+  let store;
+  try {
+    worker.store.activate(options.gatewayUrl, now - 1);
+    bindWorker(worker);
+    const ctx = { origin: "local", agent: "codex", cwd: app, state: {} };
+    await onRequest({}, ctx);
+    await onResponse({ id: "swift-response" }, ctx);
+    expect(worker.store.db.query("SELECT value FROM meta WHERE key LIKE 'context:%'").all()
+      .map((r) => JSON.parse(r.value))).toEqual([{ project: "swift-app", branch: "main", language: "Swift" }]);
+    await worker.stop();
+    store = new Store(join(directory, "magpie-wakatime", "state.sqlite"));
+    await collectDay(store, options, localDay(now));
+    expect(store.pending(now).map((r) => JSON.parse(r.payload)))
+      .toMatchObject([{ project: "swift-app", branch: "main", language: "Swift" }]);
+  } finally {
+    store?.close(); await worker.stop(); server.stop(true);
+    rmSync(directory, { recursive: true, maxRetries: 5, retryDelay: 50 });
   }
 });
 

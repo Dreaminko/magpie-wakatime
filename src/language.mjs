@@ -31,41 +31,51 @@ const BY_EXTENSION = new Map(Object.entries({
   do: "Stata", sas: "SAS", tcl: "Tcl", gd: "GDScript", vb: "Visual Basic .NET",
 }));
 
+const CANONICAL_NAMES = new Map([...new Set(BY_EXTENSION.values())].map((name) => [name.toLowerCase(), name]));
+
+export function canonicalLanguage(value) {
+  return typeof value === "string" ? CANONICAL_NAMES.get(value.trim().toLowerCase()) ?? null : null;
+}
+
 // Build products and vendored trees usually hold more files than the sources,
 // so they must not decide the project's language.
 const IGNORED_DIRECTORIES = new Set([
   "node_modules", "vendor", "third_party", "third-party", "dist", "build", "out",
   "target", "coverage", ".next", ".nuxt", "__pycache__",
+  "pods", "carthage", ".build", ".swiftpm", "deriveddata", ".xcbuild", "sourcepackages",
 ]);
 
 const GENERATED = /(?:\.d\.[cm]?ts|\.(?:min|bundle|generated)\.[^./]+)$/i;
+const IGNORED_FILES = new Set(["package.swift"]);
 
-export function detectLanguage(files) {
-  if (typeof files !== "string" || !files) return null;
+// Headers cannot tell C, C++ and Objective-C apart, so they are not counted.
+// Counting them would turn a Swift or Objective-C project with bridge headers into C.
+export function analyzeLanguage(files) {
+  if (typeof files !== "string" || !files) return { language: null, reason: "none", counts: {} };
   const counts = new Map();
-  let headers = 0;
   for (const path of files.split("\0")) {
     if (!path) continue;
     const parts = path.split("/");
     if (parts.slice(0, -1).some((part) => IGNORED_DIRECTORIES.has(part.toLowerCase()))) continue;
     const name = parts[parts.length - 1].toLowerCase();
-    if (GENERATED.test(name)) continue;
+    if (GENERATED.test(name) || IGNORED_FILES.has(name)) continue;
     const dot = name.lastIndexOf(".");
     if (dot < 1) continue;
-    const extension = name.slice(dot + 1);
-    if (extension === "h") { headers++; continue; }
-    const language = BY_EXTENSION.get(extension);
+    const language = BY_EXTENSION.get(name.slice(dot + 1));
     if (language) counts.set(language, (counts.get(language) ?? 0) + 1);
   }
-  if (headers) {
-    const language = (counts.get("C++") ?? 0) > (counts.get("C") ?? 0) ? "C++" : "C";
-    counts.set(language, (counts.get(language) ?? 0) + headers);
-  }
-  let best = null;
+  let best = null, tied = false;
   for (const [language, count] of counts) {
-    if (!best || count > best.count || (count === best.count && language < best.language)) {
-      best = { language, count };
-    }
+    if (!best || count > best.count) { best = { language, count }; tied = false; }
+    else if (count === best.count) tied = true;
   }
-  return best?.language ?? null;
+  return {
+    language: best && !tied ? best.language : null,
+    reason: !best ? "none" : tied ? "ambiguous" : null,
+    counts: Object.fromEntries(counts),
+  };
+}
+
+export function detectLanguage(files) {
+  return analyzeLanguage(files).language;
 }

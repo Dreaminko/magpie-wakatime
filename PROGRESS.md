@@ -16,7 +16,14 @@ Source plan: PLAN.md. This file records the current state; the status paragraph 
 
 0.1.8 preserves DeepSeek model identity for aliases without a release number and keeps R1 variants in the DeepSeek family. Reasoning effort is added after model parsing so its digits cannot be read as a model version.
 
+0.1.9 fixes language recognition for Swift and other projects whose sources were missed or outvoted. File sampling now includes untracked files that Git does not ignore, and results expire so an early empty scan cannot last until restart. Dependency and build trees used by Apple projects, generated files and `Package.swift` no longer vote; headers no longer decide C, C++ or Objective-C on their own. Ties resolve to no language instead of alphabetical choice, and `languageByDirectory` can pin a language for non-Git or mixed repositories. A read-only `language --cwd` command shows the file-based result and candidate counts.
+
 ## Verified
+
+- `bun test`: 54 pass, 0 fail, exit 0 for 0.1.9. Swift recognition, untracked-file sampling, cache expiry, dependency filtering, headers, directory overrides, ambiguity, and the request-hook-to-queue path are covered.
+- `bun src/sync.mjs language --cwd .`: reports `JavaScript`, source `files`, and candidate counts without reading plugin options or writing state.
+- Direct `detectLanguage` checks: Swift wins over tracked `Pods` Objective-C files and bridge headers; an equal Python/Rust tree returns no language.
+- `npm pack --dry-run --json --ignore-scripts`: version 0.1.9, 13 expected files. A direct module check also confirmed the package version and User-Agent suffix are 0.1.9.
 
 - `bun test`: 49 pass, 0 fail, exit 0 for 0.1.8. DeepSeek aliases, R1 family names, and model parsing before reasoning effort are covered.
 - `npm pack --dry-run --json --ignore-scripts`: version 0.1.8, 13 expected files. A direct module check also confirmed the package version and User-Agent suffix are 0.1.8.

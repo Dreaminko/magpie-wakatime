@@ -7,6 +7,7 @@ import { Store } from "./store.mjs";
 import { collectDay, localDay } from "./source.mjs";
 import { readApiKey, defaultDirectory } from "./config.mjs";
 import { defaultUserAgent } from "./user-agent.mjs";
+import { inspectDirectory } from "./context.hooks.mjs";
 
 function retryDelay(attempt, header, now) {
   const seconds = header && Number(header);
@@ -178,15 +179,19 @@ export class Sync {
 function cli(args) {
   const command = args.shift();
   if (!command || command === "--help") {
-    console.log("magpie-wakatime status|preview [--directory <Magpie config directory>] [--limit 5]");
+    console.log("magpie-wakatime status|preview|language [--directory <Magpie config directory>] [--limit 5] [--cwd <directory>]");
     return;
   }
-  let directory = defaultDirectory(), limit = 5;
+  let directory = defaultDirectory(), limit = 5, cwd = process.cwd();
   while (args.length) {
     const flag = args.shift(), value = args.shift();
     if (flag === "--directory" && value) directory = resolve(value);
     else if (flag === "--limit" && /^[1-9]\d*$/.test(value ?? "") && Number(value) <= 100) limit = Number(value);
+    else if (flag === "--cwd" && value) cwd = resolve(value);
     else throw new Error("invalid-arguments");
+  }
+  if (command === "language") {
+    return inspectDirectory(cwd, {}).then((result) => console.log(JSON.stringify({ cwd, ...result }, null, 2)));
   }
   if (!["status", "preview"].includes(command)) throw new Error("invalid-arguments");
   const file = join(directory, "magpie-wakatime", "state.sqlite");
@@ -199,6 +204,6 @@ function cli(args) {
 }
 
 if (import.meta.main) {
-  try { cli(process.argv.slice(2)); }
+  try { await cli(process.argv.slice(2)); }
   catch (error) { console.error(error.message === "invalid-arguments" ? "invalid-arguments" : "state-unreadable"); process.exitCode = 1; }
 }

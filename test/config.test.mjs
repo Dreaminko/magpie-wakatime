@@ -14,6 +14,20 @@ test("accepts only loopback gateway origins", () => {
   expect(() => readOptions({ excludeAgents: "codex" })).toThrow("invalid-config");
 });
 
+test("accepts absolute directory overrides with canonical language names", () => {
+  const dir = tempDirectory();
+  try {
+    const ios = join(dir, "ios");
+    expect(readOptions({}).languageByDirectory).toEqual({});
+    expect(readOptions({ languageByDirectory: { [ios]: "swift" } }).languageByDirectory).toEqual({ [ios]: "Swift" });
+    for (const languageByDirectory of [
+      { relative: "Swift" }, { [ios]: "Swiftish" }, { [ios]: 7 }, [], "Swift",
+    ]) {
+      expect(() => readOptions({ languageByDirectory })).toThrow("invalid-config");
+    }
+  } finally { rmSync(dir, { recursive: true }); }
+});
+
 test("reads only the selected key source without modifying the standard config", () => {
   const dir = tempDirectory();
   try {
