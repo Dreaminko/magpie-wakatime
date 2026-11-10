@@ -75,7 +75,7 @@ function label(value) {
 export async function onRequest(_body, ctx) {
   const current = worker;
   if (!current || current.stopped || !current.enabled() || current.store.get("enabledAt") === null ||
-      ctx.origin !== "local" || current.options.excludeAgents.includes(ctx.agent) ||
+      (ctx.origin !== "local" && ctx.origin !== "magpie-key") || current.options.excludeAgents.includes(ctx.agent) ||
       typeof ctx.cwd !== "string" || !isAbsolute(ctx.cwd) || ctx.signal?.aborted) return;
   try {
     if (!(await stat(ctx.cwd)).isDirectory()) return;

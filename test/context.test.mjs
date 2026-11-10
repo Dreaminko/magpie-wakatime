@@ -33,7 +33,7 @@ test("keeps request-time Git metadata across restart and matches the client resp
   try {
     worker.store.activate(options.gatewayUrl, now - 1);
     bindWorker(worker);
-    const ctx = { origin: "local", agent: "codex", cwd: nested, state: {}, signal: new AbortController().signal };
+    const ctx = { origin: "magpie-key", agent: "codex", cwd: nested, state: {}, signal: new AbortController().signal };
     expect(await onRequest({ messages: ["private-prompt"] }, ctx)).toBeUndefined();
     git(repo, "symbolic-ref", "HEAD", "refs/heads/next");
     await onResponse({ id: "resp-original", choices: ["private-answer"] }, ctx);
@@ -72,7 +72,7 @@ test("uses a non-Git directory name and skips missing, remote, excluded or disab
     expect(worker.store.db.query("SELECT value FROM meta WHERE key LIKE 'context:%'").all().map((r) => JSON.parse(r.value)))
       .toEqual([{ project: "plain-project" }]);
     for (const extra of [{ cwd: "" }, { cwd: "relative" }, { cwd: join(directory, "missing") },
-      { origin: "remote" }, { origin: "gateway-key" }, { agent: "ignored" },
+      { origin: "remote" }, { origin: "gateway-key" }, { origin: "unknown" }, { origin: "" }, { agent: "ignored" },
       { signal: AbortSignal.abort() }]) {
       const skipped = context(extra);
       await onRequest({}, skipped);

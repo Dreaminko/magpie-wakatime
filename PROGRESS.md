@@ -18,7 +18,11 @@ Source plan: PLAN.md. This file records the current state; the status paragraph 
 
 0.1.9 fixes language recognition for Swift and other projects whose sources were missed or outvoted. File sampling now includes untracked files that Git does not ignore, and results expire so an early empty scan cannot last until restart. Dependency and build trees used by Apple projects, generated files and `Package.swift` no longer vote; headers no longer decide C, C++ or Objective-C on their own. Ties resolve to no language instead of alphabetical choice, and `languageByDirectory` can pin a language for non-Git or mixed repositories. A read-only `language --cwd` command shows the file-based result and candidate counts.
 
+Unreleased: request hooks also accept Magpie's `magpie-key` origin for its default key on this computer. Named gateway keys and remote callers remain excluded. Project attribution still requires a trustworthy `cwd` supplied by the host.
+
 ## Verified
+
+- `bun test`: 54 pass, 0 fail after accepting `magpie-key`; the request-hook-to-queue test covers this origin, while remote, named-key and unknown origins remain excluded.
 
 - `bun test`: 54 pass, 0 fail, exit 0 for 0.1.9. Swift recognition, untracked-file sampling, cache expiry, dependency filtering, headers, directory overrides, ambiguity, and the request-hook-to-queue path are covered.
 - `bun src/sync.mjs language --cwd .`: reports `JavaScript`, source `files`, and candidate counts without reading plugin options or writing state.
