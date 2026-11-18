@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bindWorker, inspectDirectory, onRequest, onResponse } from "../src/context.hooks.mjs";
-import { Sync } from "../src/sync.mjs";
+import { Sync, sendBatch } from "../src/sync.mjs";
 import { Store } from "../src/store.mjs";
 import { readOptions } from "../src/config.mjs";
 import { collectDay, localDay } from "../src/source.mjs";
@@ -189,6 +189,107 @@ test("keeps the repository project name in linked worktrees and omits detached b
       const path = join(objects, file);
       if (statSync(path).isFile()) chmodSync(path, 0o600);
     }
+    rmSync(directory, { recursive: true, maxRetries: 5, retryDelay: 50 });
+  }
+});
+
+test("snapshots session directories in request order and isolates other agents and sessions", async () => {
+  const directory = tempDirectory(), first = join(directory, "first"), second = join(directory, "second");
+  mkdirSync(first); mkdirSync(second);
+  for (const cwd of [first, second]) git(cwd, "init", "-q", "--initial-branch=main");
+  const now = Date.now();
+  const rows = ["first", "inherited", "second", "other-agent", "other-session", "invalid", "remote"].map((id, i) => ({
+    t: new Date(now + i).toISOString(), agent: id === "other-agent" ? "claude" : "codex",
+    in: 10, out: 2, response_id: id, session: "private-session",
+  }));
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch() {
+    return Response.json({ rows, total: rows.length, offset: 0 });
+  } });
+  const options = readOptions({ gatewayUrl: server.url.origin, languageByDirectory: { [first]: "TypeScript", [second]: "Swift" } });
+  const worker = new Sync(directory, options, { env: { HOME: directory } });
+  let store;
+  try {
+    worker.store.activate(options.gatewayUrl, now - 1);
+    bindWorker(worker);
+    const ctx = (extra = {}) => ({ origin: "local", agent: "codex", session: "private-session", state: {}, ...extra });
+    const requests = [ctx({ cwd: first }), ctx(), ctx({ cwd: second }), ctx({ agent: "claude" }),
+      ctx({ session: "different-session" }), ctx({ cwd: "relative" }), ctx({ origin: "remote" })];
+    await Promise.all(requests.map((request) => onRequest({}, request)));
+    for (let i = requests.length - 1; i >= 0; i--) await onResponse({ id: rows[i].response_id }, requests[i]);
+    const latest = ctx();
+    await onRequest({}, latest);
+    expect(latest.state.wakatime).toEqual({ project: "second", branch: "main", language: "Swift" });
+    await worker.stop();
+    store = new Store(join(directory, "magpie-wakatime", "state.sqlite"));
+    await collectDay(store, options, localDay(now));
+    const payloads = store.pending(now + 10).map((r) => JSON.parse(r.payload));
+    expect(payloads.slice(0, 3).map(({ project, language }) => ({ project, language }))).toEqual([
+      { project: "first", language: "TypeScript" }, { project: "first", language: "TypeScript" },
+      { project: "second", language: "Swift" },
+    ]);
+    for (const payload of payloads.slice(3)) expect(payload).toMatchObject({ project: "Magpie" });
+    for (const payload of payloads.slice(3)) expect(payload.language).toBeUndefined();
+    const metadata = JSON.stringify(store.db.query("SELECT * FROM meta").all());
+    expect(metadata).not.toContain(directory);
+    expect(metadata).not.toContain("private-session");
+  } finally {
+    bindWorker(undefined); store?.close(); await worker.stop(); server.stop(true);
+    rmSync(directory, { recursive: true, maxRetries: 5, retryDelay: 50 });
+  }
+});
+
+test("recovers Omp projects from session headers after restart and sends their languages", async () => {
+  const directory = tempDirectory(), first = join(directory, "swift-app"), second = join(directory, "ts-app");
+  mkdirSync(first); mkdirSync(second);
+  for (const [repo, file] of [[first, "App.swift"], [second, "app.ts"]]) {
+    git(repo, "init", "-q", "--initial-branch=main");
+    writeFileSync(join(repo, file), "");
+  }
+  const session = "00000000-0000-4000-8000-000000000001";
+  const bucket = join(directory, ".omp", "agent", "sessions", "project");
+  mkdirSync(bucket, { recursive: true });
+  const file = join(bucket, `2026-11-18T00-00-00-000Z_${session}.jsonl`);
+  const header = (cwd) => [JSON.stringify({ type: "title", title: "private title" }),
+    JSON.stringify({ type: "session", id: session, cwd }),
+    JSON.stringify({ type: "message", cwd: directory, content: "private conversation" }), ""].join("\n");
+  writeFileSync(file, header(first));
+  const now = Date.now();
+  const rows = ["before-restart", "after-restart"].map((response_id, i) => ({
+    t: new Date(now + i).toISOString(), agent: "omp", in: 10, out: 2, response_id, session,
+  }));
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch() {
+    return Response.json({ rows, total: rows.length, offset: 0 });
+  } });
+  const options = readOptions({ gatewayUrl: server.url.origin }), env = { HOME: directory };
+  let worker = new Sync(directory, options, { env });
+  try {
+    worker.store.activate(options.gatewayUrl, now - 1);
+    bindWorker(worker);
+    const request = async (id) => {
+      const ctx = { origin: "magpie-key", agent: "omp", session, state: {} };
+      await onRequest({}, ctx);
+      await onResponse({ id }, ctx);
+    };
+    await request("before-restart");
+    await worker.stop();
+    writeFileSync(file, header(second));
+    worker = new Sync(directory, options, { env });
+    bindWorker(worker);
+    await request("after-restart");
+    await collectDay(worker.store, options, localDay(now));
+    let sent;
+    await sendBatch(worker.store, "test-key", { now: now + 10, fetcher: async (_url, init) => {
+      sent = JSON.parse(init.body);
+      return Response.json({ responses: sent.map(() => [{}, 201]) }, { status: 201 });
+    } });
+    expect(sent.map(({ project, branch, language }) => ({ project, branch, language }))).toEqual([
+      { project: "swift-app", branch: "main", language: "Swift" },
+      { project: "ts-app", branch: "main", language: "TypeScript" },
+    ]);
+    const metadata = JSON.stringify(worker.store.db.query("SELECT * FROM meta").all());
+    for (const secret of [directory, session, "private title", "private conversation"]) expect(metadata).not.toContain(secret);
+  } finally {
+    bindWorker(undefined); await worker.stop(); server.stop(true);
     rmSync(directory, { recursive: true, maxRetries: 5, retryDelay: 50 });
   }
 });

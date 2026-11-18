@@ -4,10 +4,13 @@ import { basename, dirname, isAbsolute, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { contextKey } from "./map.mjs";
 import { analyzeLanguage } from "./language.mjs";
+import { sessionDirectory } from "./session.mjs";
 
 const exec = promisify(execFile);
 let worker;
 const languages = new Map();
+const sessions = new Map();
+const SESSION_CACHE_LIMIT = 100;
 const LANGUAGE_CACHE_LIMIT = 100;
 const LANGUAGE_TTL = 60_000;
 const EMPTY_TTL = 10_000;
@@ -65,10 +68,30 @@ export async function inspectDirectory(cwd, options, now = Date.now()) {
 export function bindWorker(value) {
   worker = value;
   languages.clear();
+  sessions.clear();
 }
 
 function label(value) {
   return typeof value === "string" && value.length <= 255 && !/[\x00-\x1f\x7f]/.test(value) ? value.trim() : "";
+}
+
+function requestDirectory(ctx, current) {
+  const key = contextKey(ctx.agent, ctx.session, current.store.get("salt"));
+  const explicit = ctx.cwd !== undefined && ctx.cwd !== null && ctx.cwd !== "";
+  if (explicit && (typeof ctx.cwd !== "string" || !isAbsolute(ctx.cwd))) return null;
+  if (!key) return explicit ? ctx.cwd : null;
+  const cached = sessions.get(key);
+  if (!explicit && cached && cached.expires > Date.now()) return cached.promise;
+  const entry = { expires: explicit && ctx.agent !== "omp" ? Infinity : Date.now() + LANGUAGE_TTL, promise: null };
+  entry.promise = explicit ? Promise.resolve(ctx.cwd) : sessionDirectory(ctx.agent, ctx.session, current.env).then((cwd) => {
+    if (!cwd) entry.expires = Date.now() + FAILED_TTL;
+    return cwd;
+  });
+  // Reserve before awaiting I/O: later requests see directory changes in arrival order.
+  sessions.delete(key);
+  sessions.set(key, entry);
+  if (sessions.size > SESSION_CACHE_LIMIT) sessions.delete(sessions.keys().next().value);
+  return entry.promise;
 }
 
 // Snapshot before routing; delayed usage scans must not read a newer HEAD.
@@ -76,12 +99,13 @@ export async function onRequest(_body, ctx) {
   const current = worker;
   if (!current || current.stopped || !current.enabled() || current.store.get("enabledAt") === null ||
       (ctx.origin !== "local" && ctx.origin !== "magpie-key") || current.options.excludeAgents.includes(ctx.agent) ||
-      typeof ctx.cwd !== "string" || !isAbsolute(ctx.cwd) || ctx.signal?.aborted) return;
+      ctx.signal?.aborted) return;
   try {
-    if (!(await stat(ctx.cwd)).isDirectory()) return;
+    const cwd = await requestDirectory(ctx, current);
+    if (!cwd || ctx.signal?.aborted || current !== worker || !(await stat(cwd)).isDirectory()) return;
     const git = async (...args) => {
       try {
-        const { stdout } = await exec("git", ["-C", ctx.cwd, ...args], {
+        const { stdout } = await exec("git", ["-C", cwd, ...args], {
           encoding: "utf8", timeout: 400, maxBuffer: 4096, windowsHide: true, signal: ctx.signal,
         });
         return stdout.trim();
@@ -89,11 +113,11 @@ export async function onRequest(_body, ctx) {
     };
     const [location, branch, language] = await Promise.all([
       git("rev-parse", "--show-toplevel", "--git-common-dir"), git("symbolic-ref", "--quiet", "--short", "HEAD"),
-      inspectDirectory(ctx.cwd, current.options),
+      inspectDirectory(cwd, current.options),
     ]);
     const [root, common] = location.split(/\r?\n/);
-    const projectRoot = common && basename(common) === ".git" ? dirname(resolve(ctx.cwd, common)) : root;
-    const project = label(basename(projectRoot || ctx.cwd));
+    const projectRoot = common && basename(common) === ".git" ? dirname(resolve(cwd, common)) : root;
+    const project = label(basename(projectRoot || cwd));
     if (!project || ctx.signal?.aborted || current !== worker || current.stopped) return;
     ctx.state.wakatime = { project };
     if (root && label(branch)) ctx.state.wakatime.branch = label(branch);

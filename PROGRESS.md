@@ -18,11 +18,18 @@ Source plan: PLAN.md. This file records the current state; the status paragraph 
 
 0.1.9 fixes language recognition for Swift and other projects whose sources were missed or outvoted. File sampling now includes untracked files that Git does not ignore, and results expire so an early empty scan cannot last until restart. Dependency and build trees used by Apple projects, generated files and `Package.swift` no longer vote; headers no longer decide C, C++ or Objective-C on their own. Ties resolve to no language instead of alphabetical choice, and `languageByDirectory` can pin a language for non-Git or mixed repositories. A read-only `language --cwd` command shows the file-based result and candidate counts.
 
-Unreleased: request hooks also accept Magpie's `magpie-key` origin for its default key on this computer. Named gateway keys and remote callers remain excluded. Project attribution still requires a trustworthy `cwd` supplied by the host.
+0.2.0 accepts Magpie's `magpie-key` origin for its default key on this computer. Named gateway keys and remote callers remain excluded.
+
+0.2.0 reuses the known working directory for the same agent and session when `cwd` is missing. Omp can also recover a cold session from its local session header, including after host restart, without parsing conversation or tool entries. Directory changes are reserved in request arrival order, while project, branch and language remain independent response-linked snapshots. The bounded session cache holds paths only in memory; the database format and heartbeat schema are unchanged.
 
 ## Verified
 
+- 0.2.0: `bun test` passed 59 tests with 318 assertions. `npm pack --dry-run --json --ignore-scripts` reported version 0.2.0 and 14 package files, including `src/session.mjs`. Both the default and model-specific User-Agent carry `magpie-wakatime/0.2.0`.
+
 - `bun test`: 54 pass, 0 fail after accepting `magpie-key`; the request-hook-to-queue test covers this origin, while remote, named-key and unknown origins remain excluded.
+
+- Session recovery: `bun test test/context.test.mjs test/session.test.mjs` passed 11 tests with 53 assertions. Coverage includes concurrent directory changes, reversed completion order, agent/session isolation, cold Omp recovery after restart, serialized heartbeat languages, malformed or conflicting metadata, bounded header parsing, and custom session locations.
+- A read-only lookup against the active Omp session, followed by isolated in-memory collection and intercepted bulk sending, recovered `project: magpie-wakatime`, `branch: main`, and `language: JavaScript` from a request with no `cwd`. No external request was sent, and neither the working directory nor the raw session ID was written to the state database.
 
 - `bun test`: 54 pass, 0 fail, exit 0 for 0.1.9. Swift recognition, untracked-file sampling, cache expiry, dependency filtering, headers, directory overrides, ambiguity, and the request-hook-to-queue path are covered.
 - `bun src/sync.mjs language --cwd .`: reports `JavaScript`, source `files`, and candidate counts without reading plugin options or writing state.
